@@ -1,0 +1,157 @@
+import { supabase } from "./supabase";
+
+/**
+ * ==========================================
+ * Authentication
+ * ==========================================
+ */
+
+export async function signUp(email, password, username) {
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        username,
+      },
+    },
+  });
+
+  return { data, error };
+}
+
+export async function signIn(email, password) {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  return { data, error };
+}
+
+export async function signOut() {
+  return await supabase.auth.signOut();
+}
+
+export async function getCurrentUser() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  return user;
+}
+
+/**
+ * ==========================================
+ * Profiles
+ * ==========================================
+ */
+
+export async function getProfile(userId) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .single();
+
+  return { data, error };
+}
+
+export async function updateProfile(userId, updates) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .update(updates)
+    .eq("id", userId)
+    .select()
+    .single();
+
+  return { data, error };
+}
+
+/**
+ * ==========================================
+ * Games
+ * ==========================================
+ */
+
+export async function getGames() {
+  const { data, error } = await supabase
+    .from("games")
+    .select("*")
+    .order("name");
+
+  return { data, error };
+}
+
+export async function createGame(game) {
+  const { data, error } = await supabase
+    .from("games")
+    .insert(game)
+    .select()
+    .single();
+
+  return { data, error };
+}
+
+/**
+ * ==========================================
+ * Mods
+ * ==========================================
+ */
+
+export async function getMods() {
+  const { data, error } = await supabase
+    .from("mods")
+    .select(`
+      *,
+      profiles(username, avatar_url),
+      games(name)
+    `)
+    .order("created_at", { ascending: false });
+
+  return { data, error };
+}
+
+export async function getMod(modId) {
+  const { data, error } = await supabase
+    .from("mods")
+    .select(`
+      *,
+      profiles(username, avatar_url),
+      games(name)
+    `)
+    .eq("id", modId)
+    .single();
+
+  return { data, error };
+}
+
+export async function createMod(mod) {
+  const { data, error } = await supabase
+    .from("mods")
+    .insert(mod)
+    .select()
+    .single();
+
+  return { data, error };
+}
+
+export async function updateMod(modId, updates) {
+  const { data, error } = await supabase
+    .from("mods")
+    .update(updates)
+    .eq("id", modId)
+    .select()
+    .single();
+
+  return { data, error };
+}
+
+export async function deleteMod(modId) {
+  const { error } = await supabase
+    .from("mods")
+    .delete()
+    .eq("id", modId);
+
+  return { error };
+}
