@@ -1,11 +1,17 @@
 import { useState, useEffect } from 'react'
+import { uploadAvatarImage, getAvatarUrl, updateProfile } from '../lib/supabaseApi'
 
 export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUpdateUser, onDeleteMod }) {
   const [isEditing, setIsEditing] = useState(false)
   const [level, setLevel] = useState('ModHub Creator & Community Member')
   const [avatar, setAvatar] = useState('')
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [isUploading, setIsUploading] = useState(false)
   const [activeTab, setActiveTab] = useState('uploads') // 'uploads' | 'collection'
   const [savedCollection, setSavedCollection] = useState([])
+
+  // Fallback image for broken collection/mod covers
+  const PLACEHOLDER_COVER = 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80'
 
   // Extract clean string values from Supabase User Object or fallback strings
   const usernameStr = typeof currentUser === 'string'
@@ -16,20 +22,31 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
   const userId = currentUser?.id || ''
 
   useEffect(() => {
-    if (currentUser) {
-      const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
-      const user = users.find((u) => String(u.username || '').toLowerCase() === usernameLower)
-      if (user) {
-        setLevel(user.level || 'ModHub Creator & Community Member')
-        setAvatar(user.avatar || currentUser?.user_metadata?.avatar_url || '')
-      } else if (currentUser?.user_metadata?.avatar_url) {
-        setAvatar(currentUser.user_metadata.avatar_url)
+    async function loadUserData() {
+      if (currentUser) {
+        // 1. Try fetching live profile from Supabase Database first
+        if (userId) {
+          const { data: profileData } = await updateProfile(userId, {}) // or a separate getProfile check
+          // If we want a clean fetch, let's look up localStorage users or user metadata fallback
+        }
+
+        const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
+        const user = users.find((u) => String(u.username || '').toLowerCase() === usernameLower)
+        
+        if (user) {
+          setLevel(user.level || 'ModHub Creator & Community Member')
+          setAvatar(user.avatar || currentUser?.user_metadata?.avatar_url || '')
+        } else if (currentUser?.user_metadata?.avatar_url) {
+          setAvatar(currentUser.user_metadata.avatar_url)
+        }
       }
     }
+    loadUserData()
+
     // Load saved collections from localStorage
     const collections = JSON.parse(localStorage.getItem('modhub_collections') || '[]')
     setSavedCollection(collections)
-  }, [currentUser, usernameLower])
+  }, [currentUser, usernameLower, userId])
 
   // Safely filter user-submitted mods checking both Supabase user_id and string author
   const userMods = mods.filter((mod) => 
@@ -65,27 +82,74 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
 
           ctx.drawImage(img, startX, startY, minDim, minDim, 0, 0, targetSize, targetSize)
 
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
-          setAvatar(dataUrl)
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const processedFile = new File([blob], file.name || 'avatar.jpg', { type: 'image/jpeg' })
+                setSelectedFile(processedFile)
+                setAvatar(canvas.toDataURL('image/jpeg', 0.95))
+              }
+            },
+            'image/jpeg',
+            0.95
+          )
         }
       }
       reader.readAsDataURL(file)
     }
   }
 
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault()
-    const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
-    const userIndex = users.findIndex((u) => String(u.username || '').toLowerCase() === usernameLower)
-    
-    if (userIndex !== -1) {
-      users[userIndex].level = level
-      users[userIndex].avatar = avatar
-      localStorage.setItem('modhub_users', JSON.stringify(users))
-    }
+    setIsUploading(true)
 
-    setIsEditing(false)
-    if (onUpdateUser) onUpdateUser()
+    try {
+      let finalAvatarUrl = avatar
+
+      // If a new file was selected, upload it to Supabase 'avatars' bucket
+      if (selectedFile && userId) {
+        const fileExt = selectedFile.name.split('.').pop()
+        const storagePath = `${userId}/avatar-${Date.now()}.${fileExt}`
+
+        const { error: uploadErr } = await uploadAvatarImage(storagePath, selectedFile)
+        if (uploadErr) {
+          console.error("Avatar storage upload failed:", uploadErr.message)
+          alert("Storage upload failed: " + uploadErr.message)
+        } else {
+          finalAvatarUrl = getAvatarUrl(storagePath)
+          setAvatar(finalAvatarUrl)
+        }
+      }
+
+      // Update Supabase Database 'profiles' table and Auth user metadata
+      if (userId) {
+        const { error: updateErr } = await updateProfile(userId, {
+          avatar_url: finalAvatarUrl,
+          level: level
+        })
+        if (updateErr) {
+          console.error("Profile database sync error:", updateErr.message)
+        }
+      }
+
+      // Fallback: update local storage cache for offline/local consistency
+      const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
+      const userIndex = users.findIndex((u) => String(u.username || '').toLowerCase() === usernameLower)
+      
+      if (userIndex !== -1) {
+        users[userIndex].level = level
+        users[userIndex].avatar = finalAvatarUrl
+        localStorage.setItem('modhub_users', JSON.stringify(users))
+      }
+
+      setSelectedFile(null)
+      setIsEditing(false)
+      if (onUpdateUser) onUpdateUser()
+    } catch (err) {
+      console.error("Error updating profile:", err)
+    } finally {
+      setIsUploading(false)
+    }
   }
 
   const handleRemoveFromCollection = (modId) => {
@@ -106,13 +170,16 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
       </button>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-        {/* Left Column: Big GitHub-Style Profile Photo & Name */}
+        {/* Left Column: Big Profile Photo & Name */}
         <div className="md:col-span-1 space-y-6">
           <div className="relative group">
             {avatar ? (
               <img 
                 src={avatar} 
                 alt={usernameStr} 
+                onError={(e) => {
+                  e.target.style.display = 'none'
+                }}
                 className="w-full aspect-square rounded-2xl object-cover border-2 border-white/10 shadow-2xl shadow-accent/10" 
                 style={{ imageRendering: '-webkit-optimize-contrast' }}
               />
@@ -146,12 +213,18 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
                 <label className="block text-xs text-gray-400 mb-1">Bio / Title</label>
                 <input type="text" value={level} onChange={(e) => setLevel(e.target.value)} className="w-full rounded-xl border border-white/10 bg-surface py-2 px-3 text-sm text-white outline-none focus:border-accent" />
               </div>
-              <button type="submit" className="w-full btn-primary text-xs py-2 cursor-pointer">Save Changes</button>
+              <button 
+                type="submit" 
+                disabled={isUploading}
+                className="w-full btn-primary text-xs py-2 cursor-pointer disabled:opacity-50"
+              >
+                {isUploading ? 'Saving to Database...' : 'Save Changes'}
+              </button>
             </form>
           )}
         </div>
 
-        {/* Right Column: Stats & Tabs (Uploads vs Saved Collection) */}
+        {/* Right Column: Stats & Tabs */}
         <div className="md:col-span-3 space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div className="rounded-2xl bg-surface-raised p-6 border border-white/5">
@@ -238,26 +311,38 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {savedCollection.map((mod) => (
-                    <div key={mod.id} className="flex items-center justify-between rounded-xl bg-surface p-4 border border-white/5">
-                      <div className="flex items-center gap-3">
-                        <img src={mod.image} alt={mod.title} className="w-12 h-12 rounded-lg object-cover" />
-                        <div>
-                          <div className="text-base font-semibold text-white">{mod.title}</div>
-                          <div className="text-xs text-gray-400 mt-0.5">By {mod.author} · {mod.gameName || mod.game}</div>
+                  {savedCollection.map((mod) => {
+                    const modImg = mod.cover_image || mod.image || (Array.isArray(mod.images) ? mod.images[0] : null) || PLACEHOLDER_COVER
+
+                    return (
+                      <div key={mod.id} className="flex items-center justify-between rounded-xl bg-surface p-4 border border-white/5">
+                        <div className="flex items-center gap-3">
+                          <img 
+                            src={modImg} 
+                            alt={mod.title || 'Mod'} 
+                            onError={(e) => {
+                              e.target.onerror = null
+                              e.target.src = PLACEHOLDER_COVER
+                            }}
+                            className="w-12 h-12 rounded-lg object-cover border border-white/10" 
+                          />
+                          <div>
+                            <div className="text-base font-semibold text-white">{mod.title}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">By {mod.author || 'Creator'} · {mod.gameName || mod.game || 'Game'}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="badge bg-accent/20 text-accent text-xs px-3 py-1">⭐ {mod.rating || 'N/A'}</span>
+                          <button
+                            onClick={() => handleRemoveFromCollection(mod.id)}
+                            className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
+                          >
+                            Remove
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="badge bg-accent/20 text-accent text-xs px-3 py-1">⭐ {mod.rating}</span>
-                        <button
-                          onClick={() => handleRemoveFromCollection(mod.id)}
-                          className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>

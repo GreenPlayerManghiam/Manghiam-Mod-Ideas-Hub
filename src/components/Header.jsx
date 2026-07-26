@@ -1,3 +1,5 @@
+import { supabase } from '../lib/supabase'
+
 export default function Header({ currentUser, onSignInClick, onProfileClick, onUploadClick, onLogout }) {
   // Extract display string safely from Supabase User Object or string fallback
   const usernameStr = typeof currentUser === 'string' 
@@ -6,27 +8,44 @@ export default function Header({ currentUser, onSignInClick, onProfileClick, onU
 
   const usernameLower = usernameStr.toLowerCase()
 
-  let userAvatar = currentUser?.user_metadata?.avatar_url || ''
+  let userAvatar = currentUser?.user_metadata?.avatar_url || currentUser?.avatar || ''
   let userRole = ''
 
   if (currentUser) {
-    const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
-    const user = users.find((u) => String(u.username || '').toLowerCase() === usernameLower)
-    
-    if (user) {
-      if (!userAvatar) userAvatar = user.avatar || ''
-      userRole = user.role || (usernameLower === 'manghiam' ? 'founder' : 'user')
-    } else if (usernameLower === 'manghiam') {
-      userRole = 'founder'
+    try {
+      const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
+      const user = users.find((u) => String(u.username || '').toLowerCase() === usernameLower)
+      
+      if (user) {
+        if (!userAvatar) userAvatar = user.avatar || ''
+        userRole = user.role || (usernameLower === 'manghiam' ? 'founder' : 'user')
+      } else if (usernameLower === 'manghiam') {
+        userRole = 'founder'
+      }
+    } catch (err) {
+      console.error("Error reading localStorage users", err)
     }
   }
 
-  const handleLogoutClick = () => {
-    localStorage.removeItem('modhub_current_user')
-    if (onLogout) {
-      onLogout()
-    } else {
-      window.location.reload()
+  const handleLogoutClick = async () => {
+    try {
+      // 1. Sign out active Supabase session
+      if (supabase?.auth) {
+        await supabase.auth.signOut()
+      }
+    } catch (err) {
+      console.error('Error signing out from Supabase:', err)
+    } finally {
+      // 2. Wipe local storage keys
+      localStorage.removeItem('modhub_current_user')
+      localStorage.removeItem('currentUser')
+
+      // 3. Trigger parent state reset or page reload
+      if (onLogout) {
+        await onLogout()
+      } else {
+        window.location.reload()
+      }
     }
   }
 
@@ -81,6 +100,9 @@ export default function Header({ currentUser, onSignInClick, onProfileClick, onU
                   <img 
                     src={userAvatar} 
                     alt={usernameStr} 
+                    onError={(e) => {
+                      e.target.style.display = 'none'
+                    }}
                     className="h-9 w-9 rounded-full object-cover border-2 border-accent shadow-md shrink-0" 
                     style={{ imageRendering: '-webkit-optimize-contrast' }}
                   />

@@ -2,10 +2,20 @@ import { useState, useEffect } from 'react'
 import { formatDownloads } from '../data/mods'
 import { toggleFeaturedInStorage } from './AppPersistence'
 
-export default function ModDetail({ mod, onClose, onDownload, onRate, onOpenFullPage, currentUser, onToggleFeature }) {
+const PLACEHOLDER_IMAGE =
+  'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80'
+
+export default function ModDetail({
+  mod,
+  onClose,
+  onDownload,
+  onRate,
+  onOpenFullPage,
+  currentUser,
+  onToggleFeature,
+}) {
   const [isSaved, setIsSaved] = useState(false)
   const [userRating, setUserRating] = useState(null)
-  // Gallery: index of currently shown image
   const [galleryIndex, setGalleryIndex] = useState(0)
 
   // Resolve active user (with localStorage fallback)
@@ -52,8 +62,20 @@ export default function ModDetail({ mod, onClose, onDownload, onRate, onOpenFull
 
   if (!mod) return null
 
-  // Build image list (support both multi-image and legacy single-image mods)
-  const images = mod.images?.length > 0 ? mod.images : [mod.image]
+  // Build image list (support both Supabase gallery_images / cover_image & legacy static images)
+  const rawImages =
+    (mod.gallery_images && mod.gallery_images.length > 0 && mod.gallery_images) ||
+    (mod.images && mod.images.length > 0 && mod.images) ||
+    [mod.cover_image || mod.image || PLACEHOLDER_IMAGE]
+
+  const images = rawImages.filter(Boolean)
+
+  const authorName =
+    typeof mod.author === 'string'
+      ? mod.author
+      : mod.author?.username || 'Community Modder'
+
+  const gameTitle = mod.gameName || mod.game?.name || mod.game || 'Game Mod'
 
   const handleToggleFeature = () => {
     const newState = toggleFeaturedInStorage(mod.id, isFeatured)
@@ -64,7 +86,10 @@ export default function ModDetail({ mod, onClose, onDownload, onRate, onOpenFull
   const handleToggleCollection = () => {
     const collections = JSON.parse(localStorage.getItem('modhub_collections') || '[]')
     if (isSaved) {
-      localStorage.setItem('modhub_collections', JSON.stringify(collections.filter((m) => m.id !== mod.id)))
+      localStorage.setItem(
+        'modhub_collections',
+        JSON.stringify(collections.filter((m) => m.id !== mod.id))
+      )
       setIsSaved(false)
     } else {
       collections.push(mod)
@@ -128,10 +153,14 @@ export default function ModDetail({ mod, onClose, onDownload, onRate, onOpenFull
         </button>
 
         {/* Image gallery */}
-        <div className="relative aspect-video">
+        <div className="relative aspect-video bg-surface-overlay">
           <img
-            src={images[galleryIndex]}
-            alt={`${mod.title} — image ${galleryIndex + 1}`}
+            src={images[galleryIndex] || PLACEHOLDER_IMAGE}
+            alt={`${mod.title || 'Mod'} — image ${galleryIndex + 1}`}
+            onError={(e) => {
+              e.target.onerror = null
+              e.target.src = PLACEHOLDER_IMAGE
+            }}
             className="h-full w-full object-cover transition-opacity duration-300"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-surface-raised via-surface-raised/20 to-transparent" />
@@ -159,7 +188,10 @@ export default function ModDetail({ mod, onClose, onDownload, onRate, onOpenFull
                   <button
                     key={i}
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); setGalleryIndex(i) }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setGalleryIndex(i)
+                    }}
                     className={`h-1.5 rounded-full transition-all cursor-pointer ${
                       i === galleryIndex ? 'w-4 bg-accent' : 'w-1.5 bg-white/40'
                     }`}
@@ -175,9 +207,9 @@ export default function ModDetail({ mod, onClose, onDownload, onRate, onOpenFull
 
         <div className="p-6 sm:p-8">
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            <span className="badge bg-accent/20 text-accent-hover">{mod.gameName || mod.game}</span>
-            <span className="badge bg-surface-overlay text-gray-400">{mod.category}</span>
-            <span className="badge bg-surface-overlay text-gray-400">v{mod.version}</span>
+            <span className="badge bg-accent/20 text-accent-hover">{gameTitle}</span>
+            {mod.category && <span className="badge bg-surface-overlay text-gray-400">{mod.category}</span>}
+            <span className="badge bg-surface-overlay text-gray-400">v{mod.version || '1.0'}</span>
             {isFeatured && (
               <span className="badge bg-accent/20 text-accent">⭐ Featured</span>
             )}
@@ -189,7 +221,7 @@ export default function ModDetail({ mod, onClose, onDownload, onRate, onOpenFull
                 {mod.title}
               </h2>
               <p className="mt-1 text-sm text-gray-500">
-                by <span className="text-gray-300">{mod.author}</span> · Updated {mod.updated || 'Recently'}
+                by <span className="text-gray-300 font-medium">{authorName}</span> · Updated {mod.updated || 'Recently'}
               </p>
             </div>
 
@@ -210,7 +242,7 @@ export default function ModDetail({ mod, onClose, onDownload, onRate, onOpenFull
             )}
           </div>
 
-          <p className="mt-4 leading-relaxed text-gray-300">{mod.description}</p>
+          <p className="mt-4 leading-relaxed text-gray-300">{mod.description || 'No description provided.'}</p>
 
           {/* Rating widget */}
           <div className="mt-4 rounded-xl bg-surface-overlay p-4 border border-white/5">
@@ -244,10 +276,10 @@ export default function ModDetail({ mod, onClose, onDownload, onRate, onOpenFull
           {/* Stats grid */}
           <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
             {[
-              { label: 'Rating', value: `⭐ ${mod.rating}` },
-              { label: 'Downloads', value: formatDownloads(mod.downloads) },
-              { label: 'Size', value: mod.size || '15 MB' },
-              { label: 'Version', value: mod.version },
+              { label: 'Rating', value: `⭐ ${mod.rating || '4.5'}` },
+              { label: 'Downloads', value: formatDownloads ? formatDownloads(mod.downloads || 0) : mod.downloads || 0 },
+              { label: 'Size', value: mod.file_size || mod.size || '15 MB' },
+              { label: 'Version', value: mod.version || '1.0' },
             ].map((item) => (
               <div key={item.label} className="rounded-lg bg-surface-overlay p-3 text-center border border-white/5">
                 <div className="text-xs text-gray-500">{item.label}</div>
@@ -257,11 +289,13 @@ export default function ModDetail({ mod, onClose, onDownload, onRate, onOpenFull
           </div>
 
           {/* Tags */}
-          <div className="mt-4 flex flex-wrap gap-2">
-            {mod.tags?.map((tag) => (
-              <span key={tag} className="badge bg-surface-overlay text-gray-400">#{tag}</span>
-            ))}
-          </div>
+          {Array.isArray(mod.tags) && mod.tags.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {mod.tags.map((tag) => (
+                <span key={tag} className="badge bg-surface-overlay text-gray-400">#{tag}</span>
+              ))}
+            </div>
+          )}
 
           {/* Action buttons */}
           <div className="mt-8 flex flex-col gap-3">
@@ -271,7 +305,7 @@ export default function ModDetail({ mod, onClose, onDownload, onRate, onOpenFull
                 onClick={() => onDownload && onDownload(mod.id)}
                 className="btn-primary flex-1 py-3 flex items-center justify-center gap-2 cursor-pointer"
               >
-                Download ({mod.size || '15 MB'})
+                Download ({mod.file_size || mod.size || '15 MB'})
               </button>
               <button
                 type="button"

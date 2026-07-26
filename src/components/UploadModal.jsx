@@ -12,7 +12,6 @@ const MAX_IMAGES = 5
 
 export default function UploadModal({ isOpen, onClose, onAddMod }) {
   const [gamesList, setGamesList] = useState([])
-  // images: array of { file: File, preview: string, name: string }
   const [images, setImages] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const formRef = useRef(null)
@@ -46,7 +45,6 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
 
     const toProcess = files.slice(0, remaining)
 
-    // Store raw original files with instant object URL previews
     const newImages = toProcess.map((file) => ({
       file: file,
       preview: URL.createObjectURL(file),
@@ -54,12 +52,12 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
     }))
 
     setImages((prev) => [...prev, ...newImages])
-    e.target.value = '' // Reset input
+    e.target.value = ''
   }
 
   const handleRemoveImage = (index) => {
     setImages((prev) => {
-      URL.revokeObjectURL(prev[index].preview) // Revoke object URL to free memory
+      URL.revokeObjectURL(prev[index].preview)
       return prev.filter((_, i) => i !== index)
     })
   }
@@ -85,7 +83,6 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
   }
 
   const handleClose = () => {
-    // Revoke memory allocations for previews
     images.forEach((img) => URL.revokeObjectURL(img.preview))
     setImages([])
     if (formRef.current) formRef.current.reset()
@@ -108,6 +105,7 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
 
       const formData = new FormData(e.target)
       const gameId = formData.get('game')
+      const username = user?.user_metadata?.username || user?.email?.split('@')[0] || 'Anonymous'
 
       const uploadedUrls = []
       for (const img of images) {
@@ -115,7 +113,6 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
         const safeName = img.name.replace(/[^a-zA-Z0-9.-]/g, '_')
         const path = `${user.id}/${timestamp}_${safeName}`
 
-        // Upload the uncompressed file directly
         const { error: uploadError } = await uploadModImage(path, img.file)
 
         if (uploadError) {
@@ -136,8 +133,11 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
         title: formData.get('title'),
         game_id: gameId,
         description: formData.get('description'),
+        author: username, // 👈 Saves display username string
         author_id: user.id,
+        user_id: user.id,
         cover_image: coverImage,
+        image: coverImage, // 👈 Dual save to prevent legacy breaks
         gallery_images: galleryImages,
         version: '1.0',
         file_size: '15 MB',
@@ -239,7 +239,6 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
               </label>
             </div>
 
-            {/* Upload trigger */}
             {images.length < MAX_IMAGES && (
               <label className="flex flex-col items-center justify-center w-full h-24 rounded-xl border-2 border-dashed border-white/20 bg-surface-overlay hover:border-accent/50 hover:bg-surface cursor-pointer transition-all">
                 <input
@@ -258,7 +257,6 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
               </label>
             )}
 
-            {/* Image grid preview */}
             {images.length > 0 && (
               <div className="mt-3 grid grid-cols-3 gap-2">
                 {images.map((img, idx) => (
@@ -268,13 +266,11 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
                       alt={`Preview ${idx + 1}`}
                       className="w-full h-full object-cover"
                     />
-                    {/* Cover badge */}
                     {idx === 0 && (
                       <span className="absolute top-1.5 left-1.5 bg-accent/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
                         COVER
                       </span>
                     )}
-                    {/* Remove button */}
                     <button
                       type="button"
                       onClick={() => handleRemoveImage(idx)}

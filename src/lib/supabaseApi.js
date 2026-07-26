@@ -63,12 +63,19 @@ export async function getProfile(userId) {
 }
 
 export async function updateProfile(userId, updates) {
+  // Update the profiles table
   const { data, error } = await supabase
     .from("profiles")
-    .update(updates)
-    .eq("id", userId)
+    .upsert({ id: userId, ...updates })
     .select()
     .single();
+
+  // Also sync avatar_url/username with Supabase Auth metadata
+  if (!error) {
+    await supabase.auth.updateUser({
+      data: updates,
+    });
+  }
 
   return { data, error };
 }
@@ -172,7 +179,7 @@ export async function uploadModImage(path, file) {
     .from("mod-images")
     .upload(path, file, {
       cacheControl: "3600",
-      upsert: false,
+      upsert: true,
     });
 
   return { data, error };
@@ -192,4 +199,29 @@ export async function deleteModImage(path) {
     .remove([path]);
 
   return { data, error };
+}
+
+/**
+ * ============================================================
+ * Storage (Avatars)
+ * ============================================================
+ */
+
+export async function uploadAvatarImage(path, file) {
+  const { data, error } = await supabase.storage
+    .from("avatars")
+    .upload(path, file, {
+      cacheControl: "3600",
+      upsert: true,
+    });
+
+  return { data, error };
+}
+
+export function getAvatarUrl(path) {
+  const { data } = supabase.storage
+    .from("avatars")
+    .getPublicUrl(path);
+
+  return data.publicUrl;
 }
