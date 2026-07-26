@@ -1,27 +1,42 @@
 import { useState, useEffect } from 'react'
 
-export default function ProfilePage({ currentUser, mods, onBackToHome, onUpdateUser, onDeleteMod }) {
+export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUpdateUser, onDeleteMod }) {
   const [isEditing, setIsEditing] = useState(false)
   const [level, setLevel] = useState('ModHub Creator & Community Member')
   const [avatar, setAvatar] = useState('')
   const [activeTab, setActiveTab] = useState('uploads') // 'uploads' | 'collection'
   const [savedCollection, setSavedCollection] = useState([])
 
+  // Extract clean string values from Supabase User Object or fallback strings
+  const usernameStr = typeof currentUser === 'string'
+    ? currentUser
+    : currentUser?.user_metadata?.username || currentUser?.email?.split('@')[0] || 'User'
+
+  const usernameLower = usernameStr.toLowerCase()
+  const userId = currentUser?.id || ''
+
   useEffect(() => {
     if (currentUser) {
       const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
-      const user = users.find((u) => u.username.toLowerCase() === currentUser.toLowerCase())
+      const user = users.find((u) => String(u.username || '').toLowerCase() === usernameLower)
       if (user) {
         setLevel(user.level || 'ModHub Creator & Community Member')
-        setAvatar(user.avatar || '')
+        setAvatar(user.avatar || currentUser?.user_metadata?.avatar_url || '')
+      } else if (currentUser?.user_metadata?.avatar_url) {
+        setAvatar(currentUser.user_metadata.avatar_url)
       }
     }
     // Load saved collections from localStorage
     const collections = JSON.parse(localStorage.getItem('modhub_collections') || '[]')
     setSavedCollection(collections)
-  }, [currentUser])
+  }, [currentUser, usernameLower])
 
-  const userMods = mods.filter((mod) => mod.author.toLowerCase() === currentUser?.toLowerCase())
+  // Safely filter user-submitted mods checking both Supabase user_id and string author
+  const userMods = mods.filter((mod) => 
+    (userId && mod.user_id === userId) ||
+    String(mod.author || '').toLowerCase() === usernameLower
+  )
+
   const totalDownloads = userMods.reduce((acc, m) => acc + (m.downloads || 0), 0)
 
   const handleImageUpload = (e) => {
@@ -35,7 +50,7 @@ export default function ProfilePage({ currentUser, mods, onBackToHome, onUpdateU
           let canvas = document.createElement('canvas')
           let ctx = canvas.getContext('2d')
 
-          // Keep high resolution for the big GitHub-style display view
+          // Keep high resolution for display view
           const targetSize = 800
           canvas.width = targetSize
           canvas.height = targetSize
@@ -43,7 +58,7 @@ export default function ProfilePage({ currentUser, mods, onBackToHome, onUpdateU
           ctx.imageSmoothingEnabled = true
           ctx.imageSmoothingQuality = 'high'
 
-          // Center-crop square logic automatically so full posters fit perfectly
+          // Center-crop square logic automatically
           let minDim = Math.min(img.width, img.height)
           let startX = (img.width - minDim) / 2
           let startY = (img.height - minDim) / 2
@@ -61,7 +76,7 @@ export default function ProfilePage({ currentUser, mods, onBackToHome, onUpdateU
   const handleSaveProfile = (e) => {
     e.preventDefault()
     const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
-    const userIndex = users.findIndex((u) => u.username.toLowerCase() === currentUser?.toLowerCase())
+    const userIndex = users.findIndex((u) => String(u.username || '').toLowerCase() === usernameLower)
     
     if (userIndex !== -1) {
       users[userIndex].level = level
@@ -97,19 +112,19 @@ export default function ProfilePage({ currentUser, mods, onBackToHome, onUpdateU
             {avatar ? (
               <img 
                 src={avatar} 
-                alt={currentUser} 
+                alt={usernameStr} 
                 className="w-full aspect-square rounded-2xl object-cover border-2 border-white/10 shadow-2xl shadow-accent/10" 
                 style={{ imageRendering: '-webkit-optimize-contrast' }}
               />
             ) : (
               <div className="flex w-full aspect-square items-center justify-center rounded-2xl bg-accent text-6xl font-bold text-white shadow-2xl">
-                {currentUser.charAt(0).toUpperCase()}
+                {usernameStr.charAt(0).toUpperCase() || 'U'}
               </div>
             )}
           </div>
 
           <div>
-            <h1 className="font-display text-3xl font-bold text-white">{currentUser}</h1>
+            <h1 className="font-display text-3xl font-bold text-white">{usernameStr}</h1>
             <p className="text-sm text-accent font-medium mt-1">{level}</p>
           </div>
 
