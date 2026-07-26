@@ -1,18 +1,22 @@
 export default function Header({ currentUser, onSignInClick, onProfileClick, onUploadClick, onLogout }) {
-  // FIX: Read directly from localStorage on every render instead of using useEffect.
-  // The old useEffect only re-ran when currentUser changed, so updating your avatar
-  // in ProfileModal would never refresh the header. Direct reads are synchronous and
-  // always reflect the latest saved data whenever the parent re-renders this component.
-  let userAvatar = ''
+  // Extract display string safely from Supabase User Object or string fallback
+  const usernameStr = typeof currentUser === 'string' 
+    ? currentUser 
+    : currentUser?.user_metadata?.username || currentUser?.email?.split('@')[0] || ''
+
+  const usernameLower = usernameStr.toLowerCase()
+
+  let userAvatar = currentUser?.user_metadata?.avatar_url || ''
   let userRole = ''
 
   if (currentUser) {
     const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
-    const user = users.find((u) => u.username.toLowerCase() === currentUser.toLowerCase())
+    const user = users.find((u) => String(u.username || '').toLowerCase() === usernameLower)
+    
     if (user) {
-      userAvatar = user.avatar || ''
-      userRole = user.role || (currentUser.toLowerCase() === 'manghiam' ? 'founder' : 'user')
-    } else if (currentUser.toLowerCase() === 'manghiam') {
+      if (!userAvatar) userAvatar = user.avatar || ''
+      userRole = user.role || (usernameLower === 'manghiam' ? 'founder' : 'user')
+    } else if (usernameLower === 'manghiam') {
       userRole = 'founder'
     }
   }
@@ -76,18 +80,18 @@ export default function Header({ currentUser, onSignInClick, onProfileClick, onU
                 {userAvatar ? (
                   <img 
                     src={userAvatar} 
-                    alt={currentUser} 
+                    alt={usernameStr} 
                     className="h-9 w-9 rounded-full object-cover border-2 border-accent shadow-md shrink-0" 
                     style={{ imageRendering: '-webkit-optimize-contrast' }}
                   />
                 ) : (
                   <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-sm font-bold text-white shadow-md shrink-0">
-                    {currentUser.charAt(0).toUpperCase()}
+                    {usernameStr.charAt(0).toUpperCase() || 'U'}
                   </span>
                 )}
                 <span className="text-sm font-medium text-white pr-1 flex items-center gap-1.5">
                   {userRole === 'founder' && <span className="text-xs">👑</span>}
-                  {currentUser}
+                  {usernameStr}
                 </span>
               </button>
 
