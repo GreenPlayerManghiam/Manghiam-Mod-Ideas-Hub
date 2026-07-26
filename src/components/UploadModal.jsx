@@ -1,47 +1,40 @@
-import { useState } from 'react'
-import { getGames } from '../data/mods'
-import { saveModToStorage } from './AppPersistence'
-
-// Compress an image file to a base64 JPEG string
-// maxWidth: max pixel width (height scales proportionally)
-// quality: JPEG quality 0-1
-const compressImage = (file, maxWidth = 700, quality = 0.65) => {
-  return new Promise((resolve) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const img = new Image()
-      img.onload = () => {
-        let { width, height } = img
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width)
-          width = maxWidth
-        }
-        const canvas = document.createElement('canvas')
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext('2d')
-        ctx.imageSmoothingEnabled = true
-        ctx.imageSmoothingQuality = 'high'
-        ctx.drawImage(img, 0, 0, width, height)
-        resolve(canvas.toDataURL('image/jpeg', quality))
-      }
-      img.src = e.target.result
-    }
-    reader.readAsDataURL(file)
-  })
-}
+import { useState, useEffect, useRef } from 'react'
+import {
+  getGames,
+  createGame,
+  createMod,
+  uploadModImage,
+  getModImageUrl,
+  getCurrentUser,
+} from '../lib/supabaseApi'
 
 const MAX_IMAGES = 5
 
-export default function UploadModal({ isOpen, onClose, onAddMod, currentUser }) {
-  const [gamesList, setGamesList] = useState(getGames)
-  // images: array of { preview: base64string, name: string }
+export default function UploadModal({ isOpen, onClose, onAddMod }) {
+  const [gamesList, setGamesList] = useState([])
+  // images: array of { file: File, preview: string, name: string }
   const [images, setImages] = useState([])
-  const [isCompressing, setIsCompressing] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const formRef = useRef(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const loadGames = async () => {
+      const { data, error } = await getGames()
+      if (error) {
+        console.error('Failed to load games:', error)
+        return
+      }
+      setGamesList(data || [])
+    }
+
+    loadGames()
+  }, [isOpen])
 
   if (!isOpen) return null
 
-  const handleImagesChange = async (e) => {
+  const handleImagesChange = (e) => {
     const files = Array.from(e.target.files)
     if (!files.length) return
 
@@ -52,92 +45,123 @@ export default function UploadModal({ isOpen, onClose, onAddMod, currentUser }) 
     }
 
     const toProcess = files.slice(0, remaining)
-    setIsCompressing(true)
 
-    try {
-      const compressed = await Promise.all(
-        toProcess.map((file) => compressImage(file, 700, 0.65))
-      )
-      setImages((prev) => [
-        ...prev,
-        ...compressed.map((preview, i) => ({ preview, name: toProcess[i].name })),
-      ])
-    } catch (err) {
-      alert('Failed to process one or more images. Please try again.')
-    } finally {
-      setIsCompressing(false)
-      // Reset input so the same file can be re-selected if removed
-      e.target.value = ''
-    }
+    // Store raw original files with instant object URL previews
+    const newImages = toProcess.map((file) => ({
+      file: file,
+      preview: URL.createObjectURL(file),
+      name: file.name,
+    }))
+
+    setImages((prev) => [...prev, ...newImages])
+    e.target.value = '' // Reset input
   }
 
   const handleRemoveImage = (index) => {
-    setImages((prev) => prev.filter((_, i) => i !== index))
+    setImages((prev) => {
+      URL.revokeObjectURL(prev[index].preview) // Revoke object URL to free memory
+      return prev.filter((_, i) => i !== index)
+    })
   }
 
-  const handleAddCustomGame = () => {
+  const handleAddCustomGame = async () => {
     const gameName = prompt("Enter new game title (e.g., 'Elden Ring'):")
     if (!gameName) return
 
     const gameIcon = prompt("Enter an emoji icon for the game (e.g., '💍'):", '🎮') || '🎮'
-    const gameId = gameName.toLowerCase().replace(/[^a-z0-9]/g, '')
 
-    const customGames = JSON.parse(localStorage.getItem('modhub_custom_games') || '[]')
-    if (customGames.some((g) => g.id === gameId)) {
+    if (gamesList.some((g) => g.name.toLowerCase() === gameName.toLowerCase())) {
       alert('This game already exists!')
       return
     }
 
-    const newGame = { id: gameId, name: gameName, icon: gameIcon }
-    customGames.push(newGame)
-    localStorage.setItem('modhub_custom_games', JSON.stringify(customGames))
-    setGamesList(getGames())
-  }
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    const formData = new FormData(e.target)
-    const gameName = formData.get('game')
-
-    // images[0] = cover/main image (used by ModCard), images[1..] = gallery
-    const imageUrls = images.map((img) => img.preview)
-    const coverImage =
-      imageUrls[0] ||
-      'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80'
-
-    const newMod = {
-      id: Date.now(),
-      title: formData.get('title'),
-      game: gameName,
-      gameName: gameName,
-      description: formData.get('description'),
-      author: currentUser || 'You',
-      rating: 5.0,
-      downloads: 0,
-      size: '15 MB',
-      fileSize: '15 MB',
-      version: '1.0',
-      category: 'Gameplay',
-      tags: ['New', 'Custom'],
-      // Cover image (backward-compatible single image field)
-      image: coverImage,
-      // Full gallery (all images including cover)
-      images: imageUrls.length > 0 ? imageUrls : [coverImage],
-      uploaded: true,
+    const { data: newGame, error } = await createGame({ name: gameName, icon: gameIcon })
+    if (error) {
+      alert('Failed to add game: ' + error.message)
+      return
     }
 
-    // Persist to localStorage so it survives refreshes
-    saveModToStorage(newMod)
+    setGamesList((prev) => [...prev, newGame].sort((a, b) => a.name.localeCompare(b.name)))
+  }
 
-    onAddMod(newMod)
+  const handleClose = () => {
+    // Revoke memory allocations for previews
+    images.forEach((img) => URL.revokeObjectURL(img.preview))
     setImages([])
+    if (formRef.current) formRef.current.reset()
     onClose()
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+
+    if (isSubmitting) return
+    setIsSubmitting(true)
+
+    try {
+      const user = await getCurrentUser()
+      if (!user) {
+        alert('You must be signed in to upload a mod.')
+        setIsSubmitting(false)
+        return
+      }
+
+      const formData = new FormData(e.target)
+      const gameId = formData.get('game')
+
+      const uploadedUrls = []
+      for (const img of images) {
+        const timestamp = Date.now()
+        const safeName = img.name.replace(/[^a-zA-Z0-9.-]/g, '_')
+        const path = `${user.id}/${timestamp}_${safeName}`
+
+        // Upload the uncompressed file directly
+        const { error: uploadError } = await uploadModImage(path, img.file)
+
+        if (uploadError) {
+          throw new Error(`Failed to upload image "${img.name}": ${uploadError.message}`)
+        }
+
+        const publicUrl = getModImageUrl(path)
+        uploadedUrls.push(publicUrl)
+      }
+
+      const coverImage =
+        uploadedUrls[0] ||
+        'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80'
+
+      const galleryImages = uploadedUrls.length > 0 ? uploadedUrls : [coverImage]
+
+      const newMod = {
+        title: formData.get('title'),
+        game_id: gameId,
+        description: formData.get('description'),
+        author_id: user.id,
+        cover_image: coverImage,
+        gallery_images: galleryImages,
+        version: '1.0',
+        file_size: '15 MB',
+        tags: ['New', 'Custom'],
+      }
+
+      const { data: createdMod, error: createError } = await createMod(newMod)
+      if (createError) {
+        throw new Error(createError.message)
+      }
+
+      onAddMod(createdMod)
+      handleClose()
+    } catch (err) {
+      alert('Failed to publish mod: ' + err.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div
         className="card relative w-full max-w-lg p-6 bg-surface-raised border border-white/10 shadow-2xl max-h-[92vh] overflow-y-auto"
@@ -146,14 +170,14 @@ export default function UploadModal({ isOpen, onClose, onAddMod, currentUser }) 
         <div className="flex justify-between items-center mb-6">
           <h3 className="font-display text-xl font-bold text-white">Upload a New Mod</h3>
           <button
-            onClick={() => { setImages([]); onClose() }}
+            onClick={handleClose}
             className="text-gray-400 hover:text-white text-xl cursor-pointer"
           >
             &times;
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
           {/* Title */}
           <div>
             <label className="block text-sm text-gray-400 mb-1">Mod Title</label>
@@ -179,15 +203,16 @@ export default function UploadModal({ isOpen, onClose, onAddMod, currentUser }) 
             </div>
             <select
               name="game"
+              required
+              defaultValue=""
               className="w-full rounded-xl border border-white/10 bg-surface-overlay py-2.5 px-3 text-sm text-white outline-none focus:border-accent"
             >
-              {gamesList
-                .filter((g) => g.id !== 'all')
-                .map((game) => (
-                  <option key={game.id} value={game.name}>
-                    {game.icon} {game.name}
-                  </option>
-                ))}
+              <option value="" disabled>Select a game</option>
+              {gamesList.map((game) => (
+                <option key={game.id} value={game.id}>
+                  {game.icon} {game.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -223,19 +248,13 @@ export default function UploadModal({ isOpen, onClose, onAddMod, currentUser }) 
                   multiple
                   onChange={handleImagesChange}
                   className="hidden"
-                  disabled={isCompressing}
+                  disabled={isSubmitting}
                 />
-                {isCompressing ? (
-                  <span className="text-xs text-gray-400 animate-pulse">Compressing images…</span>
-                ) : (
-                  <>
-                    <span className="text-2xl mb-1">🖼️</span>
-                    <span className="text-xs text-gray-400">
-                      Click to add images ({MAX_IMAGES - images.length} remaining)
-                    </span>
-                    <span className="text-[10px] text-gray-600 mt-0.5">PNG, JPG, WEBP — auto-compressed</span>
-                  </>
-                )}
+                <span className="text-2xl mb-1">🖼️</span>
+                <span className="text-xs text-gray-400">
+                  Click to add images ({MAX_IMAGES - images.length} remaining)
+                </span>
+                <span className="text-[10px] text-gray-600 mt-0.5">PNG, JPG, WEBP — uncompressed full quality</span>
               </label>
             )}
 
@@ -278,10 +297,10 @@ export default function UploadModal({ isOpen, onClose, onAddMod, currentUser }) 
 
           <button
             type="submit"
-            disabled={isCompressing}
+            disabled={isSubmitting}
             className="w-full btn-primary py-3 mt-2 cursor-pointer disabled:opacity-50"
           >
-            {isCompressing ? 'Processing Images…' : 'Publish Mod'}
+            {isSubmitting ? 'Publishing…' : 'Publish Mod'}
           </button>
         </form>
       </div>

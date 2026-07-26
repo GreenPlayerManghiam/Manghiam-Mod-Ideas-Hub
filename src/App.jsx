@@ -1,5 +1,12 @@
 import { useMemo, useState, useRef, useEffect } from 'react'
-import { mods as initialMods, getGames } from './data/mods'
+import {
+  getMods,
+  getGames,
+  getCurrentUser,
+  onAuthStateChange,
+  signOut,
+} from './lib/supabaseApi'
+
 import Header from './components/Header'
 import Hero from './components/Hero'
 import FeaturedMods from './components/FeaturedMods'
@@ -16,21 +23,15 @@ import DeveloperPortal from './components/DeveloperPortal'
 import InfoPage from './components/InfoPage'
 
 export default function App() {
-  // Load mods from localStorage if available, otherwise use initialMods
-  const [modsList, setModsList] = useState(() => {
-    const savedMods = localStorage.getItem('modhub_custom_mods')
-    return savedMods ? JSON.parse(savedMods) : initialMods
-  })
-
-  // Whenever modsList changes, save it to localStorage so uploads persist!
-  useEffect(() => {
-    localStorage.setItem('modhub_custom_mods', JSON.stringify(modsList))
-  }, [modsList])
+  const [modsList, setModsList] = useState([])
+  const [gamesList, setGamesList] = useState([])
+  const [currentUser, setCurrentUser] = useState(null)
+  const [loading, setLoading] = useState(true)
 
   const [query, setQuery] = useState('')
   const [selectedGame, setSelectedGame] = useState('all')
   const [selectedCategory, setSelectedCategory] = useState('All')
-  
+
   // Modal preview state vs Full Page state
   const [selectedMod, setSelectedMod] = useState(null)
   const [activeModId, setActiveModId] = useState(null)
@@ -38,35 +39,60 @@ export default function App() {
   const [currentView, setCurrentView] = useState('home') // 'home', 'profile', 'developers', 'info', 'mod-detail'
   const [activeInfoPage, setActiveInfoPage] = useState('Privacy')
 
-  const [currentUser, setCurrentUser] = useState(() => {
-    return localStorage.getItem('modhub_current_user') || null
-  })
-
-  // Keep localStorage perfectly synced with currentUser state changes
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('modhub_current_user', currentUser)
-    } else {
-      localStorage.removeItem('modhub_current_user')
-    }
-  }, [currentUser])
-
   const [isAuthOpen, setIsAuthOpen] = useState(false)
   const [isUploadOpen, setIsUploadOpen] = useState(false)
 
-  // Direct ref to the browse section so scrolling from the hero works seamlessly
+  // Ref to the browse section for smooth scrolling
   const browseRef = useRef(null)
+
+  // 1. Fetch initial data from Supabase on mount
+  useEffect(() => {
+    async function initData() {
+      setLoading(true)
+      try {
+        // Fetch current user session
+        const user = await getCurrentUser()
+        setCurrentUser(user)
+
+        // Fetch mods and games from Supabase
+        const [{ data: modsData }, { data: gamesData }] = await Promise.all([
+          getMods(),
+          getGames(),
+        ])
+
+        if (modsData) setModsList(modsData)
+        if (gamesData) setGamesList(gamesData)
+      } catch (err) {
+        console.error('Failed to initialize Supabase data:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    initData()
+
+    // 2. Subscribe to real-time auth state updates
+    const { data: authListener } = onAuthStateChange((event, session) => {
+      setCurrentUser(session?.user || null)
+    })
+
+    return () => {
+      if (authListener?.subscription) {
+        authListener.subscription.unsubscribe()
+      }
+    }
+  }, [])
 
   const scrollToBrowse = () => {
     browseRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  const handleAuthSuccess = (username) => {
-    setCurrentUser(username)
+  const handleAuthSuccess = (user) => {
+    setCurrentUser(user)
   }
 
-  const handleSignOut = () => {
-    localStorage.removeItem('modhub_current_user')
+  const handleSignOut = async () => {
+    await signOut()
     setCurrentUser(null)
     setCurrentView('home')
   }
@@ -77,24 +103,31 @@ export default function App() {
     const q = query.toLowerCase().trim()
     return modsList.filter((mod) => {
       // Support matching game by id or name
-      const gamesList = getGames()
       const matchingGameObj = gamesList.find((g) => g.id === selectedGame)
       const targetGameName = matchingGameObj ? matchingGameObj.name : selectedGame
 
-      const matchesGame = selectedGame === 'all' || mod.game === selectedGame || mod.game === targetGameName
-      const matchesCategory = selectedCategory === 'All' || mod.category === selectedCategory
+      const matchesGame =
+        selectedGame === 'all' ||
+        mod.game === selectedGame ||
+        mod.game_id === selectedGame ||
+        mod.game === targetGameName
+
+      const matchesCategory =
+        selectedCategory === 'All' || mod.category === selectedCategory
+
       const matchesQuery =
         !q ||
-        mod.title.toLowerCase().includes(q) ||
-        mod.author.toLowerCase().includes(q) ||
-        mod.description.toLowerCase().includes(q) ||
-        mod.tags.some((t) => t.toLowerCase().includes(q))
+        mod.title?.toLowerCase().includes(q) ||
+        mod.author?.toLowerCase().includes(q) ||
+        mod.description?.toLowerCase().includes(q) ||
+        mod.tags?.some((t) => t.toLowerCase().includes(q))
+
       return matchesGame && matchesCategory && matchesQuery
     })
-  }, [query, selectedGame, selectedCategory, modsList])
+  }, [query, selectedGame, selectedCategory, modsList, gamesList])
 
   const handleAddMod = (newMod) => {
-    setModsList([newMod, ...modsList])
+    setModsList((prev) => [newMod, ...prev])
   }
 
   const handleDeleteMod = (modId) => {
@@ -107,11 +140,13 @@ export default function App() {
   const handleDownload = (modId) => {
     setModsList((prevMods) =>
       prevMods.map((mod) =>
-        mod.id === modId ? { ...mod, downloads: mod.downloads + 1 } : mod
+        mod.id === modId ? { ...mod, downloads: (mod.downloads || 0) + 1 } : mod
       )
     )
     setSelectedMod((prev) =>
-      prev && prev.id === modId ? { ...prev, downloads: prev.downloads + 1 } : prev
+      prev && prev.id === modId
+        ? { ...prev, downloads: (prev.downloads || 0) + 1 }
+        : prev
     )
   }
 
@@ -119,21 +154,9 @@ export default function App() {
     setModsList((prevMods) =>
       prevMods.map((mod) => {
         if (mod.id === modId) {
-          // Pull all ratings from localStorage to calculate the true average dynamically
-          const allRatingsMap = JSON.parse(localStorage.getItem('modhub_mod_ratings') || '{}')
-          const modRatingsObj = allRatingsMap[modId] || {}
-          const scores = Object.values(modRatingsObj)
-
-          let newAvg = mod.rating // default fallback
-          if (scores.length > 0) {
-            const sum = scores.reduce((acc, val) => acc + val, 0)
-            newAvg = Number((sum / scores.length).toFixed(1))
-          }
-
           return {
             ...mod,
-            rating: newAvg,
-            ratingsArray: scores,
+            rating: score,
           }
         }
         return mod
@@ -142,20 +165,9 @@ export default function App() {
 
     setSelectedMod((prev) => {
       if (prev && prev.id === modId) {
-        const allRatingsMap = JSON.parse(localStorage.getItem('modhub_mod_ratings') || '{}')
-        const modRatingsObj = allRatingsMap[modId] || {}
-        const scores = Object.values(modRatingsObj)
-
-        let newAvg = prev.rating
-        if (scores.length > 0) {
-          const sum = scores.reduce((acc, val) => acc + val, 0)
-          newAvg = Number((sum / scores.length).toFixed(1))
-        }
-
         return {
           ...prev,
-          rating: newAvg,
-          ratingsArray: scores,
+          rating: score,
         }
       }
       return prev
@@ -167,29 +179,29 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
-      <Header 
+      <Header
         currentUser={currentUser}
-        onSignInClick={() => setIsAuthOpen(true)} 
+        onSignInClick={() => setIsAuthOpen(true)}
         onProfileClick={() => setCurrentView('profile')}
-        onUploadClick={() => setIsUploadOpen(true)} 
+        onUploadClick={() => setIsUploadOpen(true)}
       />
 
       <main>
         {currentView === 'home' && (
           <>
-            <Hero 
-              onBrowseClick={scrollToBrowse} 
-              onUploadClick={() => setIsUploadOpen(true)} 
+            <Hero
+              onBrowseClick={scrollToBrowse}
+              onUploadClick={() => setIsUploadOpen(true)}
             />
             <FeaturedMods mods={featuredMods} onSelect={setSelectedMod} />
-            
+
             {/* Dynamically loads default + user-added custom games for filtering */}
-            <GameCategories 
-              games={getGames()} 
-              selectedGame={selectedGame} 
-              onSelectGame={setSelectedGame} 
+            <GameCategories
+              games={gamesList}
+              selectedGame={selectedGame}
+              onSelectGame={setSelectedGame}
             />
-            
+
             <div ref={browseRef}>
               <SearchBar
                 query={query}
@@ -199,13 +211,19 @@ export default function App() {
                 resultCount={filteredMods.length}
               />
             </div>
-            
-            <ModGrid mods={filteredMods} onSelect={setSelectedMod} />
+
+            {loading ? (
+              <div className="flex justify-center items-center py-20 text-gray-400">
+                <span className="animate-pulse text-lg">Loading mods from database…</span>
+              </div>
+            ) : (
+              <ModGrid mods={filteredMods} onSelect={setSelectedMod} />
+            )}
           </>
         )}
 
         {currentView === 'mod-detail' && activeFullMod && (
-          <ModPage 
+          <ModPage
             mod={activeFullMod}
             currentUser={currentUser}
             onBackToHome={() => setCurrentView('home')}
@@ -215,7 +233,7 @@ export default function App() {
         )}
 
         {currentView === 'profile' && (
-          <ProfilePage 
+          <ProfilePage
             currentUser={currentUser}
             mods={modsList}
             onBackToHome={() => setCurrentView('home')}
@@ -225,20 +243,18 @@ export default function App() {
         )}
 
         {currentView === 'developers' && (
-          <DeveloperPortal 
-            onBackToHome={() => setCurrentView('home')}
-          />
+          <DeveloperPortal onBackToHome={() => setCurrentView('home')} />
         )}
 
         {currentView === 'info' && (
-          <InfoPage 
+          <InfoPage
             pageTitle={activeInfoPage}
             onBackToHome={() => setCurrentView('home')}
           />
         )}
       </main>
 
-      <Footer 
+      <Footer
         onNavigateDev={() => setCurrentView('developers')}
         onNavigateInfo={(pageName) => {
           setActiveInfoPage(pageName)
@@ -246,12 +262,12 @@ export default function App() {
         }}
         onUploadClick={() => setIsUploadOpen(true)}
       />
-      
-      {/* Quick Preview Modal with "Open Full Page" integration */}
-      <ModDetail 
-        mod={selectedMod} 
-        onClose={() => setSelectedMod(null)} 
-        onDownload={handleDownload} 
+
+      {/* Modals */}
+      <ModDetail
+        mod={selectedMod}
+        onClose={() => setSelectedMod(null)}
+        onDownload={handleDownload}
         onRate={handleRate}
         onOpenFullPage={(modId) => {
           setSelectedMod(null)
@@ -260,16 +276,16 @@ export default function App() {
           window.scrollTo({ top: 0, behavior: 'smooth' })
         }}
       />
-      <AuthModal 
-        isOpen={isAuthOpen} 
-        onClose={() => setIsAuthOpen(false)} 
-        onAuthSuccess={handleAuthSuccess} 
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onAuthSuccess={handleAuthSuccess}
       />
-      <UploadModal 
-        isOpen={isUploadOpen} 
-        onClose={() => setIsUploadOpen(false)} 
-        onAddMod={handleAddMod} 
-        currentUser={currentUser} 
+      <UploadModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        onAddMod={handleAddMod}
+        currentUser={currentUser}
       />
     </div>
   )

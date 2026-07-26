@@ -1,9 +1,9 @@
 import { supabase } from "./supabase";
 
 /**
- * ==========================================
+ * ============================================================
  * Authentication
- * ==========================================
+ * ============================================================
  */
 
 export async function signUp(email, password, username) {
@@ -42,9 +42,9 @@ export async function getCurrentUser() {
 }
 
 /**
- * ==========================================
+ * ============================================================
  * Profiles
- * ==========================================
+ * ============================================================
  */
 
 export async function getProfile(userId) {
@@ -69,9 +69,9 @@ export async function updateProfile(userId, updates) {
 }
 
 /**
- * ==========================================
+ * ============================================================
  * Games
- * ==========================================
+ * ============================================================
  */
 
 export async function getGames() {
@@ -94,9 +94,9 @@ export async function createGame(game) {
 }
 
 /**
- * ==========================================
+ * ============================================================
  * Mods
- * ==========================================
+ * ============================================================
  */
 
 export async function getMods() {
@@ -105,7 +105,7 @@ export async function getMods() {
     .select(`
       *,
       profiles(username, avatar_url),
-      games(name)
+      games(name, icon)
     `)
     .order("created_at", { ascending: false });
 
@@ -118,7 +118,7 @@ export async function getMod(modId) {
     .select(`
       *,
       profiles(username, avatar_url),
-      games(name)
+      games(name, icon)
     `)
     .eq("id", modId)
     .single();
@@ -154,4 +154,37 @@ export async function deleteMod(modId) {
     .eq("id", modId);
 
   return { error };
+}
+
+/**
+ * ============================================================
+ * Storage (Mod Images)
+ * ============================================================
+ */
+
+export async function uploadModImage(path, file) {
+  const { data, error } = await supabase.storage
+    .from("mod-images")
+    .upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+    });
+
+  return { data, error };
+}
+
+export function getModImageUrl(path) {
+  const { data } = supabase.storage
+    .from("mod-images")
+    .getPublicUrl(path);
+
+  return data.publicUrl;
+}
+
+export async function deleteModImage(path) {
+  const { data, error } = await supabase.storage
+    .from("mod-images")
+    .remove([path]);
+
+  return { data, error };
 }
