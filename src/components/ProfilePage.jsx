@@ -1,5 +1,14 @@
 import { useState, useEffect } from 'react'
-import { uploadAvatarImage, getAvatarUrl, updateProfile } from '../lib/supabaseApi'
+// ✅ FIX: import everything from supabaseApi (single source of truth).
+//         Removed the separate `import { supabase } from '../lib/supabase'` line
+//         that caused a duplicate-client situation and could clash with the
+//         supabaseApi module's own client instance.
+import {
+  supabase,
+  uploadAvatarImage,
+  getAvatarUrl,
+  updateProfile,
+} from '../lib/supabaseApi'
 
 export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUpdateUser, onDeleteMod }) {
   const [isEditing, setIsEditing] = useState(false)
@@ -14,9 +23,10 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
   const PLACEHOLDER_COVER = 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80'
 
   // Extract clean string values from Supabase User Object or fallback strings
-  const usernameStr = typeof currentUser === 'string'
-    ? currentUser
-    : currentUser?.user_metadata?.username || currentUser?.email?.split('@')[0] || 'User'
+  const usernameStr = currentUser?.username ||
+    (typeof currentUser === 'string' ? currentUser : currentUser?.user_metadata?.username) ||
+    currentUser?.email?.split('@')[0] ||
+    'User'
 
   const usernameLower = usernameStr.toLowerCase()
   const userId = currentUser?.id || ''
@@ -24,15 +34,37 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
   useEffect(() => {
     async function loadUserData() {
       if (currentUser) {
-        // 1. Try fetching live profile from Supabase Database first
+        // 1. Fetch live profile row directly from Supabase Database
         if (userId) {
-          const { data: profileData } = await updateProfile(userId, {}) // or a separate getProfile check
-          // If we want a clean fetch, let's look up localStorage users or user metadata fallback
+          try {
+            const { data: profileData, error } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', userId)
+              .single()
+
+            if (!error && profileData) {
+              if (profileData.level) setLevel(profileData.level)
+              if (profileData.avatar_url) {
+                setAvatar(profileData.avatar_url)
+                return
+              }
+            }
+          } catch (err) {
+            console.error('Error loading profile from Supabase:', err)
+          }
+        }
+
+        // 2. Fallbacks: avatar already on the merged currentUser object,
+        //    then localStorage cache, then user metadata
+        if (currentUser?.avatar) {
+          setAvatar(currentUser.avatar)
+          return
         }
 
         const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
         const user = users.find((u) => String(u.username || '').toLowerCase() === usernameLower)
-        
+
         if (user) {
           setLevel(user.level || 'ModHub Creator & Community Member')
           setAvatar(user.avatar || currentUser?.user_metadata?.avatar_url || '')
@@ -49,7 +81,7 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
   }, [currentUser, usernameLower, userId])
 
   // Safely filter user-submitted mods checking both Supabase user_id and string author
-  const userMods = mods.filter((mod) => 
+  const userMods = mods.filter((mod) =>
     (userId && mod.user_id === userId) ||
     String(mod.author || '').toLowerCase() === usernameLower
   )
@@ -108,34 +140,38 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
 
       // If a new file was selected, upload it to Supabase 'avatars' bucket
       if (selectedFile && userId) {
-        const fileExt = selectedFile.name.split('.').pop()
+        const fileExt = (selectedFile.name.split('.').pop() || 'jpg').toLowerCase()
         const storagePath = `${userId}/avatar-${Date.now()}.${fileExt}`
 
         const { error: uploadErr } = await uploadAvatarImage(storagePath, selectedFile)
         if (uploadErr) {
           console.error("Avatar storage upload failed:", uploadErr.message)
           alert("Storage upload failed: " + uploadErr.message)
+          // Don't abort — still try to save the level change at minimum
         } else {
           finalAvatarUrl = getAvatarUrl(storagePath)
           setAvatar(finalAvatarUrl)
         }
       }
 
-      // Update Supabase Database 'profiles' table and Auth user metadata
+      // Update Supabase Database 'profiles' table
       if (userId) {
         const { error: updateErr } = await updateProfile(userId, {
           avatar_url: finalAvatarUrl,
-          level: level
+          level: level,
+          username: usernameStr,
         })
         if (updateErr) {
           console.error("Profile database sync error:", updateErr.message)
+          alert("Profile save failed: " + updateErr.message)
+          return
         }
       }
 
       // Fallback: update local storage cache for offline/local consistency
       const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
       const userIndex = users.findIndex((u) => String(u.username || '').toLowerCase() === usernameLower)
-      
+
       if (userIndex !== -1) {
         users[userIndex].level = level
         users[userIndex].avatar = finalAvatarUrl
@@ -144,9 +180,13 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
 
       setSelectedFile(null)
       setIsEditing(false)
+
+      // ✅ FIX: call onUpdateUser so App.jsx re-fetches the merged user from
+      //         Supabase, which causes the Header avatar to update immediately.
       if (onUpdateUser) onUpdateUser()
     } catch (err) {
       console.error("Error updating profile:", err)
+      alert("Unexpected error saving profile. Please try again.")
     } finally {
       setIsUploading(false)
     }
@@ -162,7 +202,7 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-      <button 
+      <button
         onClick={onBackToHome}
         className="mb-6 text-sm font-medium text-gray-400 hover:text-white transition-colors cursor-pointer flex items-center gap-2"
       >
@@ -174,13 +214,13 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
         <div className="md:col-span-1 space-y-6">
           <div className="relative group">
             {avatar ? (
-              <img 
-                src={avatar} 
-                alt={usernameStr} 
+              <img
+                src={avatar}
+                alt={usernameStr}
                 onError={(e) => {
                   e.target.style.display = 'none'
                 }}
-                className="w-full aspect-square rounded-2xl object-cover border-2 border-white/10 shadow-2xl shadow-accent/10" 
+                className="w-full aspect-square rounded-2xl object-cover border-2 border-white/10 shadow-2xl shadow-accent/10"
                 style={{ imageRendering: '-webkit-optimize-contrast' }}
               />
             ) : (
@@ -195,8 +235,8 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
             <p className="text-sm text-accent font-medium mt-1">{level}</p>
           </div>
 
-          <button 
-            onClick={() => setIsEditing(!isEditing)} 
+          <button
+            onClick={() => setIsEditing(!isEditing)}
             className="w-full py-2.5 rounded-xl bg-surface-overlay border border-white/10 text-xs font-semibold text-gray-300 hover:text-white hover:border-accent transition-colors cursor-pointer"
           >
             {isEditing ? 'Close Editor' : '✏️ Edit Profile & Avatar'}
@@ -213,8 +253,8 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
                 <label className="block text-xs text-gray-400 mb-1">Bio / Title</label>
                 <input type="text" value={level} onChange={(e) => setLevel(e.target.value)} className="w-full rounded-xl border border-white/10 bg-surface py-2 px-3 text-sm text-white outline-none focus:border-accent" />
               </div>
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 disabled={isUploading}
                 className="w-full btn-primary text-xs py-2 cursor-pointer disabled:opacity-50"
               >
@@ -317,14 +357,14 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
                     return (
                       <div key={mod.id} className="flex items-center justify-between rounded-xl bg-surface p-4 border border-white/5">
                         <div className="flex items-center gap-3">
-                          <img 
-                            src={modImg} 
-                            alt={mod.title || 'Mod'} 
+                          <img
+                            src={modImg}
+                            alt={mod.title || 'Mod'}
                             onError={(e) => {
                               e.target.onerror = null
                               e.target.src = PLACEHOLDER_COVER
                             }}
-                            className="w-12 h-12 rounded-lg object-cover border border-white/10" 
+                            className="w-12 h-12 rounded-lg object-cover border border-white/10"
                           />
                           <div>
                             <div className="text-base font-semibold text-white">{mod.title}</div>

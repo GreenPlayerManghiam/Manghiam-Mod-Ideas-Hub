@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { formatDownloads } from '../data/mods'
+// ✅ FIX: import formatDownloads from supabaseApi (which exports it) instead of
+//         '../data/mods' which may not exist in all project setups.
+import { formatDownloads } from '../lib/supabaseApi'
 import { toggleFeaturedInStorage } from './AppPersistence'
 
 const PLACEHOLDER_IMAGE =
@@ -18,17 +20,25 @@ export default function ModDetail({
   const [userRating, setUserRating] = useState(null)
   const [galleryIndex, setGalleryIndex] = useState(0)
 
-  // Resolve active user (with localStorage fallback)
-  const activeUser = currentUser || localStorage.getItem('modhub_current_user') || null
+  // ✅ FIX: safely extract a string identifier from currentUser whether it is a
+  //         Supabase user object, a merged profile object, or a plain string.
+  const activeUserIdentifier =
+    (typeof currentUser === 'string' ? currentUser : null) ||
+    currentUser?.username ||
+    currentUser?.email ||
+    localStorage.getItem('modhub_current_user') ||
+    null
 
   // Is the current user the Founder?
-  const isFounder = (activeUser || '').toLowerCase() === 'manghiam'
+  const isFounder =
+    (activeUserIdentifier || '').toLowerCase() === 'manghiam' ||
+    currentUser?.is_founder === true
 
   // Featured state with localStorage override
   const [isFeatured, setIsFeatured] = useState(() => {
     try {
       const overrides = JSON.parse(localStorage.getItem('modhub_featured_overrides') || '{}')
-      if (Object.prototype.hasOwnProperty.call(overrides, mod?.id)) {
+      if (mod && Object.prototype.hasOwnProperty.call(overrides, mod?.id)) {
         return overrides[mod.id]
       }
     } catch {}
@@ -42,9 +52,9 @@ export default function ModDetail({
       const collections = JSON.parse(localStorage.getItem('modhub_collections') || '[]')
       setIsSaved(collections.some((m) => m.id === mod.id))
       // Check user rating
-      if (activeUser) {
+      if (activeUserIdentifier) {
         const allRatings = JSON.parse(localStorage.getItem('modhub_mod_ratings') || '{}')
-        setUserRating(allRatings[mod.id]?.[activeUser] || null)
+        setUserRating(allRatings[mod.id]?.[activeUserIdentifier] || null)
       } else {
         setUserRating(null)
       }
@@ -58,7 +68,7 @@ export default function ModDetail({
         }
       } catch {}
     }
-  }, [mod, activeUser])
+  }, [mod, activeUserIdentifier])
 
   if (!mod) return null
 
@@ -99,18 +109,18 @@ export default function ModDetail({
   }
 
   const handleStarClick = (star) => {
-    if (!activeUser) {
+    if (!activeUserIdentifier) {
       alert('Please sign in to rate mods!')
       return
     }
     const allRatings = JSON.parse(localStorage.getItem('modhub_mod_ratings') || '{}')
     if (!allRatings[mod.id]) allRatings[mod.id] = {}
     let newScore = star
-    if (allRatings[mod.id][activeUser] === star) {
-      delete allRatings[mod.id][activeUser]
+    if (allRatings[mod.id][activeUserIdentifier] === star) {
+      delete allRatings[mod.id][activeUserIdentifier]
       newScore = null
     } else {
-      allRatings[mod.id][activeUser] = star
+      allRatings[mod.id][activeUserIdentifier] = star
     }
     localStorage.setItem('modhub_mod_ratings', JSON.stringify(allRatings))
     setUserRating(newScore)
@@ -277,7 +287,7 @@ export default function ModDetail({
           <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
             {[
               { label: 'Rating', value: `⭐ ${mod.rating || '4.5'}` },
-              { label: 'Downloads', value: formatDownloads ? formatDownloads(mod.downloads || 0) : mod.downloads || 0 },
+              { label: 'Downloads', value: formatDownloads(mod.downloads || 0) },
               { label: 'Size', value: mod.file_size || mod.size || '15 MB' },
               { label: 'Version', value: mod.version || '1.0' },
             ].map((item) => (

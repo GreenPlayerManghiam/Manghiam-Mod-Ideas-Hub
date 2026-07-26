@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { supabase } from "../lib/supabase";
+// ✅ FIX: import supabase from supabaseApi (single source of truth) instead of
+//         a separate lib/supabase file that may differ.
+import { supabase } from "../lib/supabaseApi";
 
 export default function AuthModal({
   isOpen,

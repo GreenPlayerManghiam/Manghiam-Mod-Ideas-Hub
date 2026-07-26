@@ -5,6 +5,7 @@ import {
   getCurrentUser,
   onAuthStateChange,
   signOut,
+  supabase,          // ✅ FIX: supabase is now exported from supabaseApi directly
 } from './lib/supabaseApi'
 
 import Header from './components/Header'
@@ -45,14 +46,46 @@ export default function App() {
   // Ref to the browse section for smooth scrolling
   const browseRef = useRef(null)
 
+  // Helper to fetch profile row and build merged user object
+  const fetchMergedUser = async (authUser) => {
+    if (!authUser) {
+      setCurrentUser(null)
+      return
+    }
+    try {
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single()
+
+      setCurrentUser({
+        id: authUser.id,
+        email: authUser.email,
+        username: profileData?.username || authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'Modder',
+        avatar: profileData?.avatar_url || authUser.user_metadata?.avatar_url || null,
+        level: profileData?.level || 'Community Modder',
+        ...(profileData || {}),
+      })
+    } catch (err) {
+      console.error('Failed to fetch profile row:', err)
+      setCurrentUser({
+        id: authUser.id,
+        email: authUser.email,
+        username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'Modder',
+        avatar: authUser.user_metadata?.avatar_url || null,
+      })
+    }
+  }
+
   // 1. Fetch initial data from Supabase on mount
   useEffect(() => {
     async function initData() {
       setLoading(true)
       try {
-        // Fetch current user session
+        // Fetch current user session and merge profile row
         const user = await getCurrentUser()
-        setCurrentUser(user)
+        await fetchMergedUser(user)
 
         // Fetch mods and games from Supabase
         const [{ data: modsData }, { data: gamesData }] = await Promise.all([
@@ -72,8 +105,8 @@ export default function App() {
     initData()
 
     // 2. Subscribe to real-time auth state updates
-    const { data: authListener } = onAuthStateChange((event, session) => {
-      setCurrentUser(session?.user || null)
+    const { data: authListener } = onAuthStateChange(async (event, session) => {
+      await fetchMergedUser(session?.user || null)
     })
 
     return () => {
@@ -87,14 +120,23 @@ export default function App() {
     browseRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  const handleAuthSuccess = (user) => {
-    setCurrentUser(user)
+  const handleAuthSuccess = async (user) => {
+    await fetchMergedUser(user)
+    setIsAuthOpen(false)
   }
 
   const handleSignOut = async () => {
     await signOut()
     setCurrentUser(null)
+    localStorage.removeItem('modhub_current_user')
     setCurrentView('home')
+  }
+
+  // ✅ FIX: Re-fetches profile from Supabase after any profile edit so the
+  //         Header immediately reflects the new avatar / level without a reload.
+  const handleUserUpdated = async () => {
+    const authUser = await getCurrentUser()
+    await fetchMergedUser(authUser)
   }
 
   const featuredMods = useMemo(() => modsList.filter((m) => m.featured), [modsList])
@@ -102,7 +144,6 @@ export default function App() {
   const filteredMods = useMemo(() => {
     const q = query.toLowerCase().trim()
     return modsList.filter((mod) => {
-      // Support matching game by id or name
       const matchingGameObj = gamesList.find((g) => g.id === selectedGame)
       const targetGameName = matchingGameObj ? matchingGameObj.name : selectedGame
 
@@ -115,7 +156,6 @@ export default function App() {
       const matchesCategory =
         selectedCategory === 'All' || mod.category === selectedCategory
 
-      // Safely convert all fields to string before calling .toLowerCase() to avoid crashes on null/non-string values
       const matchesQuery =
         !q ||
         String(mod.title || '').toLowerCase().includes(q) ||
@@ -197,7 +237,6 @@ export default function App() {
             />
             <FeaturedMods mods={featuredMods} onSelect={setSelectedMod} />
 
-            {/* Dynamically loads default + user-added custom games for filtering */}
             <GameCategories
               games={gamesList}
               selectedGame={selectedGame}
@@ -241,6 +280,7 @@ export default function App() {
             onBackToHome={() => setCurrentView('home')}
             onSignOut={handleSignOut}
             onDeleteMod={handleDeleteMod}
+            onUpdateUser={handleUserUpdated}
           />
         )}
 
@@ -271,6 +311,7 @@ export default function App() {
         onClose={() => setSelectedMod(null)}
         onDownload={handleDownload}
         onRate={handleRate}
+        currentUser={currentUser}
         onOpenFullPage={(modId) => {
           setSelectedMod(null)
           setActiveModId(modId)

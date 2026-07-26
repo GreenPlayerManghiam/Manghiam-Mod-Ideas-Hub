@@ -12,13 +12,22 @@ export default function ModPage({
   currentUser,
   onToggleFeature,
 }) {
-  const activeUser =
-    currentUser ||
+  // ✅ FIX: currentUser is now a Supabase user object (or merged profile object),
+  //         not just a plain username string. Extract a safe string for display
+  //         and comparisons before calling .toLowerCase() on it.
+  const activeUserStr =
+    (typeof currentUser === 'string' ? currentUser : null) ||
+    currentUser?.username ||
+    currentUser?.email ||
     localStorage.getItem('modhub_current_user') ||
     localStorage.getItem('currentUser') ||
     'GuestUser'
 
-  const isFounder = activeUser.toLowerCase() === 'manghiam'
+  // ✅ FIX: isFounder check now uses the safely extracted string, preventing
+  //         the "Cannot read properties of object (reading 'toLowerCase')" crash.
+  const isFounder =
+    activeUserStr.toLowerCase() === 'manghiam' ||
+    currentUser?.is_founder === true
 
   // All hooks must be called before any conditional return
   const [likes, setLikes] = useState(mod?.likes || 0)
@@ -58,8 +67,8 @@ export default function ModPage({
   useEffect(() => {
     if (!mod) return
     const allRatings = JSON.parse(localStorage.getItem('modhub_mod_ratings') || '{}')
-    setUserRating(allRatings[mod.id]?.[activeUser] || null)
-  }, [mod?.id, activeUser])
+    setUserRating(allRatings[mod.id]?.[activeUserStr] || null)
+  }, [mod?.id, activeUserStr])
 
   // Load persisted votes
   useEffect(() => {
@@ -69,13 +78,13 @@ export default function ModPage({
     if (modVotes) {
       setLikes(modVotes.likes ?? mod.likes ?? 0)
       setDislikes(modVotes.dislikes ?? mod.dislikes ?? 0)
-      setUserVote(modVotes.userVotes?.[activeUser] || null)
+      setUserVote(modVotes.userVotes?.[activeUserStr] || null)
     } else {
       setLikes(mod.likes || 0)
       setDislikes(mod.dislikes || 0)
       setUserVote(null)
     }
-  }, [mod?.id, activeUser])
+  }, [mod?.id, activeUserStr])
 
   // Persist comments
   useEffect(() => {
@@ -108,7 +117,7 @@ export default function ModPage({
     if (!allVotes[mod.id]) allVotes[mod.id] = { likes: 0, dislikes: 0, userVotes: {} }
     allVotes[mod.id].likes = newLikes
     allVotes[mod.id].dislikes = newDislikes
-    allVotes[mod.id].userVotes[activeUser] = newVote
+    allVotes[mod.id].userVotes[activeUserStr] = newVote
     localStorage.setItem('modhub_mod_votes', JSON.stringify(allVotes))
   }
 
@@ -135,9 +144,9 @@ export default function ModPage({
   const handleStarClick = (star) => {
     const allRatings = JSON.parse(localStorage.getItem('modhub_mod_ratings') || '{}')
     if (!allRatings[mod.id]) allRatings[mod.id] = {}
-    let newScore = allRatings[mod.id][activeUser] === star ? null : star
-    if (newScore === null) delete allRatings[mod.id][activeUser]
-    else allRatings[mod.id][activeUser] = star
+    let newScore = allRatings[mod.id][activeUserStr] === star ? null : star
+    if (newScore === null) delete allRatings[mod.id][activeUserStr]
+    else allRatings[mod.id][activeUserStr] = star
     localStorage.setItem('modhub_mod_ratings', JSON.stringify(allRatings))
     setUserRating(newScore)
     if (onRate) onRate(mod.id, newScore)
@@ -155,7 +164,7 @@ export default function ModPage({
     setComments([
       {
         id: Date.now(),
-        author: activeUser,
+        author: activeUserStr,
         text: newCommentText,
         time: 'Just now',
         likes: 0,
@@ -206,7 +215,7 @@ export default function ModPage({
               ...c,
               replies: [
                 ...(c.replies || []),
-                { id: Date.now(), author: activeUser, text: replyText, time: 'Just now' },
+                { id: Date.now(), author: activeUserStr, text: replyText, time: 'Just now' },
               ],
             }
           : c
@@ -337,7 +346,7 @@ export default function ModPage({
               <textarea
                 value={newCommentText}
                 onChange={(e) => setNewCommentText(e.target.value)}
-                placeholder={`Write a comment as ${activeUser}…`}
+                placeholder={`Write a comment as ${activeUserStr}…`}
                 rows="3"
                 className="w-full rounded-xl border border-white/10 bg-surface py-2.5 px-3 text-sm text-white placeholder-gray-500 outline-none focus:border-accent"
               />
@@ -358,7 +367,7 @@ export default function ModPage({
                 </div>
               ) : (
                 comments.map((comment) => {
-                  const isAuthor = comment.author === activeUser
+                  const isAuthor = comment.author === activeUserStr
                   const isEditing = editingCommentId === comment.id
                   return (
                     <div
@@ -458,7 +467,7 @@ export default function ModPage({
                                 <span className="font-semibold text-white">{reply.author}</span>
                                 <div className="flex items-center gap-2">
                                   <span className="text-gray-500">{reply.time}</span>
-                                  {reply.author === activeUser && (
+                                  {reply.author === activeUserStr && (
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteReply(comment.id, reply.id)}

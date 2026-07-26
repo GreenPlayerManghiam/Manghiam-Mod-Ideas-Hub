@@ -131,13 +131,11 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
 
       const newMod = {
         title: formData.get('title'),
-        game_id: gameId,
         description: formData.get('description'),
-        author: username, // 👈 Saves display username string
         author_id: user.id,
-        user_id: user.id,
+        game_id: gameId,
+        category: 'Gameplay',
         cover_image: coverImage,
-        image: coverImage, // 👈 Dual save to prevent legacy breaks
         gallery_images: galleryImages,
         version: '1.0',
         file_size: '15 MB',

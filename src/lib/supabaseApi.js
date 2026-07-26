@@ -1,5 +1,11 @@
 import { supabase } from "./supabase";
 
+// ✅ FIX: re-export the raw client so App.jsx (and any other file that imports
+//         `supabase` from supabaseApi instead of supabase.js directly) works
+//         without a separate import. This resolves:
+//         "supabaseApi.js does not provide an export named 'supabase'"
+export { supabase } from "./supabase";
+
 /**
  * ============================================================
  * Authentication
@@ -66,11 +72,12 @@ export async function updateProfile(userId, updates) {
   // Update the profiles table
   const { data, error } = await supabase
     .from("profiles")
-    .upsert({ id: userId, ...updates })
+    .upsert({ id: userId, ...updates, updated_at: new Date().toISOString() })
     .select()
     .single();
 
-  // Also sync avatar_url/username with Supabase Auth metadata
+  // Also sync avatar_url/username with Supabase Auth metadata so user_metadata
+  // stays consistent with the profiles table
   if (!error) {
     await supabase.auth.updateUser({
       data: updates,
@@ -224,4 +231,19 @@ export function getAvatarUrl(path) {
     .getPublicUrl(path);
 
   return data.publicUrl;
+}
+
+/**
+ * ============================================================
+ * Utilities
+ * ============================================================
+ */
+
+// ✅ FIX: added formatDownloads here so ModDetail.jsx can import it from
+//         supabaseApi instead of the non-existent '../data/mods' module.
+export function formatDownloads(n) {
+  if (!n) return "0";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
 }

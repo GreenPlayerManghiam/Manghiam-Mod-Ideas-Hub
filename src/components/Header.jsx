@@ -1,21 +1,26 @@
-import { supabase } from '../lib/supabase'
+// ✅ FIX: import supabase from supabaseApi (single source of truth) instead of
+//         a separate lib/supabase file.
+import { supabase } from '../lib/supabaseApi'
 
 export default function Header({ currentUser, onSignInClick, onProfileClick, onUploadClick, onLogout }) {
   // Extract display string safely from Supabase User Object or string fallback
-  const usernameStr = typeof currentUser === 'string' 
-    ? currentUser 
-    : currentUser?.user_metadata?.username || currentUser?.email?.split('@')[0] || ''
+  const usernameStr = typeof currentUser === 'string'
+    ? currentUser
+    : currentUser?.username || currentUser?.user_metadata?.username || currentUser?.email?.split('@')[0] || ''
 
   const usernameLower = usernameStr.toLowerCase()
 
-  let userAvatar = currentUser?.user_metadata?.avatar_url || currentUser?.avatar || ''
+  // ✅ FIX: also read avatar from currentUser.avatar (set by fetchMergedUser in App.jsx
+  //         which pulls from the profiles table) so a freshly saved profile picture
+  //         shows in the header immediately after onUpdateUser fires.
+  let userAvatar = currentUser?.avatar || currentUser?.avatar_url || currentUser?.user_metadata?.avatar_url || ''
   let userRole = ''
 
   if (currentUser) {
     try {
       const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
       const user = users.find((u) => String(u.username || '').toLowerCase() === usernameLower)
-      
+
       if (user) {
         if (!userAvatar) userAvatar = user.avatar || ''
         userRole = user.role || (usernameLower === 'manghiam' ? 'founder' : 'user')
@@ -91,19 +96,19 @@ export default function Header({ currentUser, onSignInClick, onProfileClick, onU
         <div className="flex items-center gap-3">
           {currentUser ? (
             <div className="flex items-center gap-2">
-              <button 
+              <button
                 type="button"
                 onClick={onProfileClick}
                 className="flex items-center gap-2.5 rounded-full bg-surface-overlay border border-white/10 px-3.5 py-1.5 hover:border-accent transition-colors cursor-pointer"
               >
                 {userAvatar ? (
-                  <img 
-                    src={userAvatar} 
-                    alt={usernameStr} 
+                  <img
+                    src={userAvatar}
+                    alt={usernameStr}
                     onError={(e) => {
                       e.target.style.display = 'none'
                     }}
-                    className="h-9 w-9 rounded-full object-cover border-2 border-accent shadow-md shrink-0" 
+                    className="h-9 w-9 rounded-full object-cover border-2 border-accent shadow-md shrink-0"
                     style={{ imageRendering: '-webkit-optimize-contrast' }}
                   />
                 ) : (
@@ -117,7 +122,7 @@ export default function Header({ currentUser, onSignInClick, onProfileClick, onU
                 </span>
               </button>
 
-              <button 
+              <button
                 type="button"
                 onClick={handleLogoutClick}
                 className="text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 font-medium px-3.5 py-2.5 rounded-xl transition cursor-pointer"
@@ -127,8 +132,8 @@ export default function Header({ currentUser, onSignInClick, onProfileClick, onU
               </button>
             </div>
           ) : (
-            <button 
-              type="button" 
+            <button
+              type="button"
               onClick={onSignInClick}
               className="btn-secondary hidden px-4 py-2 sm:inline-flex cursor-pointer text-xs uppercase font-mono tracking-wider"
             >
@@ -136,8 +141,8 @@ export default function Header({ currentUser, onSignInClick, onProfileClick, onU
             </button>
           )}
 
-          <button 
-            type="button" 
+          <button
+            type="button"
             onClick={onUploadClick}
             className="btn-primary px-4 py-2 cursor-pointer text-xs uppercase font-mono tracking-wider"
           >
