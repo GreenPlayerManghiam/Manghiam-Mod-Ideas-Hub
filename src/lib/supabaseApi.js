@@ -41,6 +41,11 @@ export async function getCurrentUser() {
   return user;
 }
 
+// Listen to real-time auth state updates (login, logout, token refresh)
+export function onAuthStateChange(callback) {
+  return supabase.auth.onAuthStateChange(callback);
+}
+
 /**
  * ============================================================
  * Profiles
