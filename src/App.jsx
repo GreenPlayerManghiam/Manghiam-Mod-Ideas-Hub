@@ -115,12 +115,14 @@ export default function App() {
       const matchesCategory =
         selectedCategory === 'All' || mod.category === selectedCategory
 
+      // Safely convert all fields to string before calling .toLowerCase() to avoid crashes on null/non-string values
       const matchesQuery =
         !q ||
-        mod.title?.toLowerCase().includes(q) ||
-        mod.author?.toLowerCase().includes(q) ||
-        mod.description?.toLowerCase().includes(q) ||
-        mod.tags?.some((t) => t.toLowerCase().includes(q))
+        String(mod.title || '').toLowerCase().includes(q) ||
+        String(mod.author || '').toLowerCase().includes(q) ||
+        String(mod.description || '').toLowerCase().includes(q) ||
+        (Array.isArray(mod.tags) &&
+          mod.tags.some((t) => String(t || '').toLowerCase().includes(q)))
 
       return matchesGame && matchesCategory && matchesQuery
     })
