@@ -1,0 +1,205 @@
+import { useState, useEffect } from 'react'
+
+export default function ProfileModal({ isOpen, onClose, currentUser, mods, onSignOut, onUpdateUser }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [level, setLevel] = useState('ModHub Creator & Community Member')
+  const [avatar, setAvatar] = useState('')
+
+  useEffect(() => {
+    if (currentUser) {
+      const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
+      const user = users.find((u) => u.username.toLowerCase() === currentUser.toLowerCase())
+      if (user) {
+        setLevel(user.level || 'ModHub Creator & Community Member')
+        setAvatar(user.avatar || '')
+      }
+    }
+  }, [currentUser, isOpen])
+
+  if (!isOpen || !currentUser) return null
+
+  // Filter mods uploaded by this specific user
+  const userMods = mods.filter((mod) => mod.author.toLowerCase() === currentUser.toLowerCase())
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const img = new Image()
+        img.src = reader.result
+        img.onload = () => {
+          let canvas = document.createElement('canvas')
+          let ctx = canvas.getContext('2d')
+
+          let width = img.width
+          let height = img.height
+
+          // Target a clean high-res thumbnail size (e.g., 400x400) 
+          // optimal for circles without overloading localStorage limits.
+          const targetSize = 400
+
+          let oc = document.createElement('canvas')
+          let octx = oc.getContext('2d')
+
+          let curWidth = width
+          let curHeight = height
+
+          oc.width = curWidth
+          oc.height = curHeight
+          octx.drawImage(img, 0, 0)
+
+          // Step-down smoothly by half iteratively to prevent aliasing/blurring
+          while (curWidth * 0.5 > targetSize) {
+            curWidth *= 0.5
+            curHeight *= 0.5
+            canvas.width = curWidth
+            canvas.height = curHeight
+            ctx.imageSmoothingEnabled = true
+            ctx.imageSmoothingQuality = 'high'
+            ctx.drawImage(oc, 0, 0, oc.width, oc.height, 0, 0, curWidth, curHeight)
+            
+            oc.width = curWidth
+            oc.height = curHeight
+            octx.drawImage(canvas, 0, 0, curWidth, curHeight, 0, 0, curWidth, curHeight)
+          }
+
+          // Final draw to target size
+          canvas.width = targetSize
+          canvas.height = targetSize
+          ctx.imageSmoothingEnabled = true
+          ctx.imageSmoothingQuality = 'high'
+          ctx.drawImage(oc, 0, 0, oc.width, oc.height, 0, 0, targetSize, targetSize)
+
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
+          setAvatar(dataUrl)
+        }
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleSaveProfile = (e) => {
+    e.preventDefault()
+    const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
+    const userIndex = users.findIndex((u) => u.username.toLowerCase() === currentUser.toLowerCase())
+    
+    if (userIndex !== -1) {
+      users[userIndex].level = level
+      users[userIndex].avatar = avatar
+      localStorage.setItem('modhub_users', JSON.stringify(users))
+    }
+
+    setIsEditing(false)
+    if (onUpdateUser) onUpdateUser()
+  }
+
+  return (
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" 
+      onClick={onClose}
+    >
+      <div 
+        className="card relative w-full max-w-lg p-6 bg-surface-raised border border-white/10 shadow-2xl" 
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-4">
+            {avatar ? (
+              <img 
+                src={avatar} 
+                alt={currentUser} 
+                className="h-20 w-20 rounded-full object-cover border-2 border-accent shadow-xl shrink-0" 
+                style={{ imageRendering: '-webkit-optimize-contrast' }}
+              />
+            ) : (
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-accent text-3xl font-bold text-white shadow-xl shrink-0">
+                {currentUser.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div>
+              <h3 className="font-display text-2xl font-bold text-white">{currentUser}</h3>
+              <p className="text-xs text-accent font-medium mt-0.5">{level}</p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose} 
+            className="text-gray-400 hover:text-white text-xl cursor-pointer self-start"
+          >
+            &times;
+          </button>
+        </div>
+
+        {isEditing ? (
+          <form onSubmit={handleSaveProfile} className="space-y-4 mb-6 bg-surface-overlay p-4 rounded-xl border border-surface-raised">
+            <h4 className="text-sm font-semibold text-white">Edit Your Profile</h4>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Profile Picture (High Quality)</label>
+              <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-white hover:file:bg-accent/80 cursor-pointer" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Custom Level / Bio Title</label>
+              <input type="text" value={level} onChange={(e) => setLevel(e.target.value)} className="w-full rounded-xl border border-white/10 bg-surface py-2 px-3 text-sm text-white outline-none focus:border-accent" />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button type="submit" className="btn-primary text-xs py-2 px-4 cursor-pointer">Save Changes</button>
+              <button type="button" onClick={() => setIsEditing(false)} className="btn-secondary text-xs py-2 px-4 cursor-pointer">Cancel</button>
+            </div>
+          </form>
+        ) : (
+          <button onClick={() => setIsEditing(true)} className="w-full mb-6 py-2 rounded-xl bg-surface-overlay border border-surface-raised text-xs font-semibold text-gray-300 hover:text-white hover:border-accent transition-colors cursor-pointer">
+            ✏️ Edit Profile & Avatar
+          </button>
+        )}
+
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="rounded-xl bg-surface-overlay p-4 border border-surface-raised text-center">
+            <div className="text-2xl font-bold text-white">{userMods.length}</div>
+            <div className="text-xs text-gray-400 mt-1">Uploaded Mods</div>
+          </div>
+          <div className="rounded-xl bg-surface-overlay p-4 border border-surface-raised text-center">
+            <div className="text-2xl font-bold text-white">
+              {userMods.reduce((acc, m) => acc + (m.downloads || 0), 0).toLocaleString()}
+            </div>
+            <div className="text-xs text-gray-400 mt-1">Total Downloads</div>
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <h4 className="text-sm font-semibold text-gray-300 mb-3">Your Published Creations</h4>
+          {userMods.length === 0 ? (
+            <div className="rounded-xl bg-surface-overlay p-4 text-center text-sm text-gray-500 border border-surface-raised">
+              You haven't uploaded any mods yet. Click "Upload Mod" to get started!
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+              {userMods.map((mod) => (
+                <div key={mod.id} className="flex items-center justify-between rounded-xl bg-surface-overlay p-3 border border-surface-raised">
+                  <div>
+                    <div className="text-sm font-medium text-white">{mod.title}</div>
+                    {/* FIX: fallback to mod.game for user-uploaded mods */}
+                    <div className="text-xs text-gray-400">{mod.gameName || mod.game} · {mod.category}</div>
+                  </div>
+                  <span className="badge bg-accent/20 text-accent text-xs">v{mod.version}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3 pt-2 border-t border-white/10">
+          <button 
+            type="button"
+            onClick={() => {
+              onSignOut()
+              onClose()
+            }}
+            className="w-full rounded-xl bg-red-500/10 border border-red-500/20 py-2.5 text-sm font-medium text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
+          >
+            Sign Out of Account
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
