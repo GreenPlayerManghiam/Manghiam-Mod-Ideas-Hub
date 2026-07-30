@@ -1,222 +1,134 @@
-# 🎮 Manghiam Mod Ideas Hub
+# Manghiam Mod Ideas Hub
 
-> A community space for game modders and enthusiasts to share, discover, and discuss mod ideas — before they become reality.
+> A community platform where gamers can share, discover, discuss, and refine game mod ideas before they become reality.
 
----
-
-## 📖 Overview
-
-**Manghiam Mod Ideas Hub** is a fully client-side **React + Vite** web application for browsing, submitting, rating, and discussing game modification ideas.
-
-Instead of distributing mods like ModDB or Nexus Mods, this project focuses on the **creative stage**—allowing the community to pitch concepts, receive feedback, and inspire future projects.
-
-Everything runs entirely inside the browser using **localStorage** and **sessionStorage**.
-
-- ✅ No backend
-- ✅ No database
-- ✅ No server
-- ✅ No hosting costs beyond a free static deployment
-
-Built and maintained by **Manghiam**.
+**Official Website:** https://manghiam-mod-ideas-hub-vercel.vercel.app/
 
 ---
 
-# What This Is
+## Overview
 
-- 🎮 A community idea board for game mod concepts
-- 💡 A place to brainstorm and inspire future mods
-- ⭐ A platform to rate, discuss, and collect ideas
-- ❤️ Lightweight, free, and runs entirely in your browser
+Manghiam Mod Ideas Hub is a full-stack web application built with **React**, **Vite**, and **Supabase**. It provides a place for gamers, modders, and creators to share original game mod concepts, receive community feedback, and discover new ideas.
 
-# What This Isn't
+Rather than hosting completed mods like ModDB or Nexus Mods, this project focuses on the creative stage of mod development—where ideas are proposed, refined, and discussed before becoming reality.
 
-- ❌ A mod download platform
-- ❌ A replacement for ModDB or Nexus Mods
-- ❌ A server-side application
-- ❌ A cloud-hosted database
-
-All data remains **only on your own device.**
+The project is actively developed and continuously expanded with new features, improvements, and quality-of-life updates.
 
 ---
 
-# ✨ Features
+## Features
 
-## 🌍 Community Features
+### Community
 
-### 🎮 Browse Mod Ideas
+* Browse community-created mod ideas
+* Search ideas by title
+* Filter ideas by game
+* View featured ideas
+* Responsive interface for desktop and mobile
 
-- Filter by game
-- Search by title
-- Sort by popularity
-- Sort by rating
+### Ratings & Feedback
 
-### ⭐ Rate Ideas
+* 1–5 star rating system
+* Like and dislike ideas
+* Community-driven discussions
 
-- 1–5 star ratings
-- Ratings persist across refreshes
+### Comments
 
-### 👍 Like / Dislike
+* Post comments
+* Reply to comments
+* Edit your own comments
+* Delete your own comments
+* Vote on comments
 
-Vote on ideas you love—or think need work.
+### Collections
 
-### 💬 Community Discussion
+* Save favourite ideas
+* Organize interesting concepts for later
 
-- Post comments
-- Edit comments
-- Delete comments
-- Reply to comments
-- Vote on comments
+### Idea Submission
 
-### ❤️ Collections
+* Create and publish new mod ideas
+* Upload concept images
+* Add descriptions
+* Select or create games
+* Persistent cloud storage through Supabase
 
-Save your favourite ideas for later.
+### User Accounts
 
-### 🖼️ Concept Image Gallery
+* Secure authentication
+* User profiles
+* Persistent accounts across devices
+* Profile customization
 
-Upload multiple concept images or reference screenshots.
+### Founder Tools
 
----
-
-## ✍️ For Idea Submitters
-
-### 📝 Submit Mod Ideas
-
-Share your idea with:
-
-- Title
-- Description
-- Game
-- Up to **5 concept images**
-
-### 🎮 Add Custom Games
-
-Can't find your game?
-
-Add it yourself during submission.
-
-### ♻️ Persistent Storage
-
-Ideas survive page refreshes using **localStorage**.
+The **Manghiam** account includes elevated permissions for managing featured ideas and other administrative functionality.
 
 ---
 
-## 👑 Founder Features (Manghiam Account)
+## Work in Progress
 
-The **Manghiam** account has elevated privileges.
+Manghiam Mod Ideas Hub is under active development.
 
-### ✨ Feature Ideas
+Current development includes improvements such as:
 
-Feature or unfeature any idea directly from:
+* Better profile management
+* Improved game and tag organization
+* Moderator roles and permissions
+* Better search and filtering
+* Improved collections
+* Additional community features
+* UI and UX improvements
+* Performance optimizations
+* General bug fixes and refinements
 
-- Mod Cards
-- Detail View
-- Full Idea Page
-
-Featured overrides are stored separately from seed data.
-
----
-
-# 🔞 Safety
-
-## Content Warning
-
-A full-screen acknowledgement is shown once per session.
-
-Users can permanently disable it with **"Don't show again."**
+Features and functionality may change as development continues.
 
 ---
 
-# 🛠 Tech Stack
+## Tech Stack
 
-| Layer | Technology |
-|--------|------------|
-| Framework | React 18 |
-| Build Tool | Vite |
-| Styling | Tailwind CSS |
-| Storage | Browser localStorage / sessionStorage |
-| Images | Canvas API |
-| Deployment | Vercel / Netlify |
-
-No Node.js server.
-
-No database.
-
-No paid services.
+| Layer          | Technology       |
+| -------------- | ---------------- |
+| Frontend       | React 18         |
+| Build Tool     | Vite             |
+| Styling        | Tailwind CSS     |
+| Backend        | Supabase         |
+| Database       | PostgreSQL       |
+| Authentication | Supabase Auth    |
+| Storage        | Supabase Storage |
+| Deployment     | Vercel           |
 
 ---
 
-# 📁 Project Structure
+## Running Locally
 
-```text
-src/
-├── components/
-│   ├── AppPersistence.js      # localStorage helpers
-│   ├── AuthModal.jsx          # Sign in / register modal
-│   ├── FeaturedMods.jsx       # Featured ideas carousel
-│   ├── Header.jsx             # Navigation and user menu
-│   ├── ModCard.jsx            # Idea grid card
-│   ├── ModDetail.jsx          # Quick-view modal
-│   ├── ModGrid.jsx            # Responsive grid
-│   ├── ModPage.jsx            # Full idea page
-│   ├── NSFWWarning.jsx        # Content warning overlay
-│   ├── ProfileModal.jsx       # User profile editor
-│   └── UploadModal.jsx        # Idea submission form
-│
-├── data/
-│   └── mods.js                # Seed data & game helpers
-│
-└── App.jsx                    # Root component
+Clone the repository:
+
+```bash
+git clone https://github.com/your-username/manghiam-mod-ideas-hub.git
 ```
 
----
+Move into the project directory:
 
-# 💾 localStorage
+```bash
+cd manghiam-mod-ideas-hub
+```
 
-| Key | Purpose |
-|------|---------|
-| `modhub_users` | Registered users |
-| `modhub_current_user` | Logged-in username |
-| `modhub_uploaded_mods` | User-submitted ideas |
-| `modhub_featured_overrides` | Founder feature overrides |
-| `modhub_mod_ratings` | Ratings |
-| `modhub_mod_votes` | Likes, dislikes and user votes |
-| `modhub_mod_comments` | Comments |
-| `modhub_collections` | Saved ideas |
-| `modhub_custom_games` | User-added games |
-| `modhub_nsfw_never_show` | Permanently hide warning |
-
----
-
-# 🗂 sessionStorage
-
-| Key | Purpose |
-|------|---------|
-| `modhub_nsfw_ok` | User accepted the warning this session |
-
----
-
-## Important
-
-Since everything is stored locally:
-
-- Ideas only exist on your device.
-- Ratings only exist on your device.
-- Comments only exist on your device.
-- Collections only exist on your device.
-
-This is **intentional** for the current version of the project.
-
----
-
-# 🚀 Getting Started
-
-## Install dependencies
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-## Start the development server
+Create a `.env` file in the project root:
+
+```env
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+Start the development server:
 
 ```bash
 npm run dev
@@ -230,156 +142,47 @@ http://localhost:5173
 
 ---
 
-# 🌐 Deployment
+## Deployment
 
-## ▲ Vercel (Recommended)
+The application is deployed on **Vercel** and uses **Supabase** as its backend.
 
-1. Push the repository to GitHub.
-2. Import the repository into Vercel.
-3. Vercel automatically detects Vite.
-4. Click **Deploy**.
+To deploy your own copy:
 
-Every push to `main` redeploys automatically.
-
----
-
-## 🌍 Netlify Drop
-
-Build:
-
-```bash
-npm run build
-```
-
-Drag the generated **dist/** folder onto Netlify Drop.
+1. Fork this repository.
+2. Create a Supabase project.
+3. Configure the required environment variables.
+4. Deploy using Vercel or another platform that supports Vite applications.
 
 ---
 
-## 📄 GitHub Pages
+## Project Status
 
-Add this to `vite.config.js`:
+This project is actively maintained.
 
-```js
-base: '/your-repo-name/',
-```
-
-Then enable GitHub Actions under:
-
-**Repository → Settings → Pages**
+While many core features are already implemented, additional functionality and improvements are planned as development progresses. Feedback, suggestions, and bug reports are always welcome.
 
 ---
 
-# 👑 Founder Account
+## Contributing
 
-The **Manghiam** account is automatically seeded into `modhub_users`.
+Contributions are welcome.
 
-Founder detection:
-
-```js
-username.toLowerCase() === "manghiam"
-```
-
-Founder abilities:
-
-- Feature ideas
-- Remove featured status
-- Manage featured ideas from every view
-
-Featured information is stored in:
-
-```
-modhub_featured_overrides
-```
+If you have an idea for a feature, improvement, or bug fix, feel free to open an issue or submit a pull request for discussion.
 
 ---
 
-# 🔧 App.jsx Integration
+## License
 
-Import:
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
 
-```js
-import {
-  loadPersistedMods,
-  saveModToStorage,
-  applyFeaturedOverrides,
-} from "./components/AppPersistence";
-```
-
-Initialize:
-
-```js
-const [mods, setMods] = useState(() =>
-  applyFeaturedOverrides([...seedMods, ...loadPersistedMods()])
-);
-```
-
-Handle new ideas:
-
-```js
-const handleAddMod = (newMod) => {
-  saveModToStorage(newMod);
-  setMods((prev) => applyFeaturedOverrides([newMod, ...prev]));
-};
-```
+See the **LICENSE** file for the complete license text.
 
 ---
 
-# 🖼 Concept Image Compression
+## Acknowledgements
 
-Images are compressed client-side using the **Canvas API**.
-
-| Setting | Value |
-|----------|-------|
-| Maximum Width | 700px |
-| JPEG Quality | 65% |
-| Estimated Image Size | 15–30 KB |
-| Five Images | 75–150 KB |
-
-Practical storage limit:
-
-Approximately **20–30 submissions** before reaching the browser's **5 MB localStorage limit**.
-
-A storage warning is displayed if the quota is exceeded.
+Special thanks to everyone who provides feedback, reports bugs, and shares ideas that help improve Manghiam Mod Ideas Hub.
 
 ---
 
-# 🤝 Contributing
-
-Pull requests are welcome.
-
-For major changes, please open an issue first to discuss what you'd like to change.
-
-By contributing, you agree that your work will be licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
-
----
-
-# 📜 License
-
-```text
-Manghiam Mod Ideas Hub
-Copyright (C) 2025 Manghiam
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as published
-by the Free Software Foundation, either version 3 of the License,
-or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-
-See the GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-```
-
-See the **LICENSE** file for the full license text.
-
----
-
-# ❤️ A Manghiam Production
-
-Licensed under **AGPL-3.0**.
-
-Made with ❤️ for the game modding community.
+**Manghiam Mod Ideas Hub** is a passion project built for the game modding community and will continue to evolve with new ideas, features, and improvements over time.
