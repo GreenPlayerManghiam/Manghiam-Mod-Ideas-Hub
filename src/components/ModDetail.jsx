@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 // ✅ FIX: import formatDownloads from supabaseApi (which exports it) instead of
-//         '../data/mods' which may not exist in all project setups.
+//        ../data/mods which may not exist in all project setups.
 import { formatDownloads } from '../lib/supabaseApi'
-import { toggleFeaturedInStorage } from './AppPersistence'
 
 const PLACEHOLDER_IMAGE =
   'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80'
@@ -14,7 +13,6 @@ export default function ModDetail({
   onRate,
   onOpenFullPage,
   currentUser,
-  onToggleFeature,
 }) {
   const [isSaved, setIsSaved] = useState(false)
   const [userRating, setUserRating] = useState(null)
@@ -29,22 +27,6 @@ export default function ModDetail({
     localStorage.getItem('modhub_current_user') ||
     null
 
-  // Is the current user the Founder?
-  const isFounder =
-    (activeUserIdentifier || '').toLowerCase() === 'manghiam' ||
-    currentUser?.is_founder === true
-
-  // Featured state with localStorage override
-  const [isFeatured, setIsFeatured] = useState(() => {
-    try {
-      const overrides = JSON.parse(localStorage.getItem('modhub_featured_overrides') || '{}')
-      if (mod && Object.prototype.hasOwnProperty.call(overrides, mod?.id)) {
-        return overrides[mod.id]
-      }
-    } catch {}
-    return mod?.featured || false
-  })
-
   useEffect(() => {
     if (mod) {
       setGalleryIndex(0)
@@ -58,15 +40,6 @@ export default function ModDetail({
       } else {
         setUserRating(null)
       }
-      // Refresh featured state
-      try {
-        const overrides = JSON.parse(localStorage.getItem('modhub_featured_overrides') || '{}')
-        if (Object.prototype.hasOwnProperty.call(overrides, mod.id)) {
-          setIsFeatured(overrides[mod.id])
-        } else {
-          setIsFeatured(mod.featured || false)
-        }
-      } catch {}
     }
   }, [mod, activeUserIdentifier])
 
@@ -86,12 +59,6 @@ export default function ModDetail({
       : mod.author?.username || 'Community Modder'
 
   const gameTitle = mod.gameName || mod.game?.name || mod.game || 'Game Mod'
-
-  const handleToggleFeature = () => {
-    const newState = toggleFeaturedInStorage(mod.id, isFeatured)
-    setIsFeatured(newState)
-    if (onToggleFeature) onToggleFeature(mod.id, newState)
-  }
 
   const handleToggleCollection = () => {
     const collections = JSON.parse(localStorage.getItem('modhub_collections') || '[]')
@@ -220,7 +187,7 @@ export default function ModDetail({
             <span className="badge bg-accent/20 text-accent-hover">{gameTitle}</span>
             {mod.category && <span className="badge bg-surface-overlay text-gray-400">{mod.category}</span>}
             <span className="badge bg-surface-overlay text-gray-400">v{mod.version || '1.0'}</span>
-            {isFeatured && (
+            {mod.featured && (
               <span className="badge bg-accent/20 text-accent">⭐ Featured</span>
             )}
           </div>
@@ -234,22 +201,6 @@ export default function ModDetail({
                 by <span className="text-gray-300 font-medium">{authorName}</span> · Updated {mod.updated || 'Recently'}
               </p>
             </div>
-
-            {/* Founder feature toggle */}
-            {isFounder && (
-              <button
-                type="button"
-                onClick={handleToggleFeature}
-                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                  isFeatured
-                    ? 'bg-accent/20 border-accent text-accent hover:bg-accent/30'
-                    : 'bg-surface-overlay border-white/10 text-yellow-400 hover:border-yellow-400/50'
-                }`}
-                title={isFeatured ? 'Remove from Featured' : 'Feature this mod'}
-              >
-                {isFeatured ? '★ Unfeature' : '☆ Feature'}
-              </button>
-            )}
           </div>
 
           <p className="mt-4 leading-relaxed text-gray-300">{mod.description || 'No description provided.'}</p>

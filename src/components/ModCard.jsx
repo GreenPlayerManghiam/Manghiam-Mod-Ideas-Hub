@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { formatDownloads } from '../data/mods'
-import { toggleFeaturedInStorage } from './AppPersistence'
 
 // Default fallback image if an upload fails or URL is invalid
 const PLACEHOLDER_IMAGE =
@@ -17,29 +16,7 @@ function StarRating({ rating }) {
   )
 }
 
-export default function ModCard({ mod, onSelect, onToggleFeature }) {
-  // Read founder status directly from localStorage
-  const isFounder =
-    (localStorage.getItem('modhub_current_user') || '').toLowerCase() === 'manghiam'
-
-  // Featured state: read override from localStorage, fall back to mod.featured
-  const [isFeatured, setIsFeatured] = useState(() => {
-    try {
-      const overrides = JSON.parse(localStorage.getItem('modhub_featured_overrides') || '{}')
-      if (Object.prototype.hasOwnProperty.call(overrides, mod.id)) {
-        return overrides[mod.id]
-      }
-    } catch {}
-    return mod.featured || false
-  })
-
-  const handleToggleFeature = (e) => {
-    e.stopPropagation() // don't open the mod detail
-    const newState = toggleFeaturedInStorage(mod.id, isFeatured)
-    setIsFeatured(newState)
-    if (onToggleFeature) onToggleFeature(mod.id, newState)
-  }
-
+export default function ModCard({ mod, onSelect }) {
   // Safe checks across both Supabase schema and mock static schema
   const imageUrl = mod.cover_image || mod.image || PLACEHOLDER_IMAGE
   
@@ -75,7 +52,7 @@ export default function ModCard({ mod, onSelect, onToggleFeature }) {
         <div className="absolute inset-0 bg-gradient-to-t from-surface-raised via-transparent to-transparent" />
 
         {/* Featured badge */}
-        {isFeatured && (
+        {mod.featured && (
           <span className="badge absolute left-3 top-3 bg-accent/90 text-white">⭐ Featured</span>
         )}
 
@@ -90,22 +67,6 @@ export default function ModCard({ mod, onSelect, onToggleFeature }) {
         <span className="badge absolute right-3 top-3 bg-black/60 text-gray-200 backdrop-blur-sm">
           {gameTitle}
         </span>
-
-        {/* Founder feature toggle — only visible to Manghiam */}
-        {isFounder && (
-          <button
-            type="button"
-            onClick={handleToggleFeature}
-            title={isFeatured ? 'Remove from Featured' : 'Add to Featured'}
-            className={`absolute right-3 bottom-3 flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold transition-all opacity-0 group-hover:opacity-100 cursor-pointer ${
-              isFeatured
-                ? 'bg-accent text-white hover:bg-accent/80'
-                : 'bg-black/60 text-yellow-400 hover:bg-black/80 backdrop-blur-sm'
-            }`}
-          >
-            {isFeatured ? '★ Unfeature' : '☆ Feature'}
-          </button>
-        )}
       </div>
 
       <div className="p-4">

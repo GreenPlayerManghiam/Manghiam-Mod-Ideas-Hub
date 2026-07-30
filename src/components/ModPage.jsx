@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { toggleFeaturedInStorage } from './AppPersistence'
+import { supabase } from '../lib/supabaseApi'
 
 const PLACEHOLDER_IMAGE =
   'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80'
@@ -10,11 +10,7 @@ export default function ModPage({
   onDownload,
   onRate,
   currentUser,
-  onToggleFeature,
 }) {
-  // ✅ FIX: currentUser is now a Supabase user object (or merged profile object),
-  //         not just a plain username string. Extract a safe string for display
-  //         and comparisons before calling .toLowerCase() on it.
   const activeUserStr =
     (typeof currentUser === 'string' ? currentUser : null) ||
     currentUser?.username ||
@@ -23,19 +19,14 @@ export default function ModPage({
     localStorage.getItem('currentUser') ||
     'GuestUser'
 
-  // ✅ FIX: isFounder check now uses the safely extracted string, preventing
-  //         the "Cannot read properties of object (reading 'toLowerCase')" crash.
-  const isFounder =
-    activeUserStr.toLowerCase() === 'manghiam' ||
-    currentUser?.is_founder === true
-
-  // All hooks must be called before any conditional return
+  // All hooks called before conditional return
   const [likes, setLikes] = useState(mod?.likes || 0)
   const [dislikes, setDislikes] = useState(mod?.dislikes || 0)
   const [userVote, setUserVote] = useState(null)
   const [userRating, setUserRating] = useState(null)
   const [galleryIndex, setGalleryIndex] = useState(0)
 
+  // Local storage feature check for badge display only
   const [isFeatured, setIsFeatured] = useState(() => {
     if (!mod) return false
     try {
@@ -45,12 +36,7 @@ export default function ModPage({
     return mod.featured || false
   })
 
-  const [comments, setComments] = useState(() => {
-    if (!mod) return []
-    const map = JSON.parse(localStorage.getItem('modhub_mod_comments') || '{}')
-    return map[mod.id] || []
-  })
-
+  const [comments, setComments] = useState([])
   const [newCommentText, setNewCommentText] = useState('')
   const [replyingTo, setReplyingTo] = useState(null)
   const [replyText, setReplyText] = useState('')
@@ -62,6 +48,62 @@ export default function ModPage({
     const collections = JSON.parse(localStorage.getItem('modhub_collections') || '[]')
     return collections.some((m) => m.id === mod.id)
   })
+
+  // Fetch Supabase comments & build threaded structure (parent -> replies)
+  useEffect(() => {
+    if (!mod?.id) return
+
+    const fetchComments = async () => {
+      const { data, error } = await supabase
+        .from('comments')
+        .select(`
+          *,
+          profiles:author_id (
+            username,
+            avatar_url
+          )
+        `)
+        .eq('mod_id', mod.id)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching comments:', error.message)
+        return
+      }
+
+      if (data) {
+        const commentMap = {}
+        const topLevelComments = []
+
+        data.forEach((c) => {
+          commentMap[c.id] = {
+            id: c.id,
+            author: c.profiles?.username || 'Community User',
+            avatar: c.profiles?.avatar_url || '',
+            author_id: c.author_id,
+            text: c.content,
+            time: new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+            likes: c.upvotes || 0,
+            dislikes: c.downvotes || 0,
+            parent_comment_id: c.parent_comment_id,
+            replies: [],
+          }
+        })
+
+        data.forEach((c) => {
+          if (c.parent_comment_id && commentMap[c.parent_comment_id]) {
+            commentMap[c.parent_comment_id].replies.push(commentMap[c.id])
+          } else if (!c.parent_comment_id) {
+            topLevelComments.push(commentMap[c.id])
+          }
+        })
+
+        setComments(topLevelComments)
+      }
+    }
+
+    fetchComments()
+  }, [mod?.id])
 
   // Load ratings on mount
   useEffect(() => {
@@ -86,18 +128,9 @@ export default function ModPage({
     }
   }, [mod?.id, activeUserStr])
 
-  // Persist comments
-  useEffect(() => {
-    if (!mod) return
-    const map = JSON.parse(localStorage.getItem('modhub_mod_comments') || '{}')
-    map[mod.id] = comments
-    localStorage.setItem('modhub_mod_comments', JSON.stringify(map))
-  }, [comments, mod?.id])
-
   // Guard moved after all hooks
   if (!mod) return null
 
-  // Support both Supabase schema and mock static schema seamlessly
   const rawImages =
     (mod.gallery_images && mod.gallery_images.length > 0 && mod.gallery_images) ||
     (mod.images && mod.images.length > 0 && mod.images) ||
@@ -152,83 +185,158 @@ export default function ModPage({
     if (onRate) onRate(mod.id, newScore)
   }
 
-  const handleToggleFeature = () => {
-    const newState = toggleFeaturedInStorage(mod.id, isFeatured)
-    setIsFeatured(newState)
-    if (onToggleFeature) onToggleFeature(mod.id, newState)
-  }
-
-  const handleAddComment = (e) => {
+  // Supabase Database Comment Handlers
+  const handleAddComment = async (e) => {
     e.preventDefault()
     if (!newCommentText.trim()) return
-    setComments([
-      {
-        id: Date.now(),
-        author: activeUserStr,
-        text: newCommentText,
+
+    if (!currentUser || !currentUser.id) {
+      alert("You must be signed in to post a comment.")
+      return
+    }
+
+    const newCommentPayload = {
+      mod_id: mod.id,
+      author_id: currentUser.id,
+      content: newCommentText.trim(),
+      parent_comment_id: null,
+    }
+
+    const { data, error } = await supabase
+      .from('comments')
+      .insert([newCommentPayload])
+      .select(`
+        *,
+        profiles:author_id (
+          username,
+          avatar_url
+        )
+      `)
+
+    if (error) {
+      console.error('Error posting comment:', error.message)
+      alert('Failed to post comment: ' + error.message)
+    } else if (data && data[0]) {
+      const c = data[0]
+      const formattedComment = {
+        id: c.id,
+        author: c.profiles?.username || activeUserStr,
+        avatar: c.profiles?.avatar_url || '',
+        author_id: c.author_id,
+        text: c.content,
         time: 'Just now',
         likes: 0,
         dislikes: 0,
-        userVote: null,
+        parent_comment_id: null,
         replies: [],
-      },
-      ...comments,
-    ])
-    setNewCommentText('')
+      }
+      setComments([formattedComment, ...comments])
+      setNewCommentText('')
+    }
   }
 
-  const handleDeleteComment = (id) => setComments(comments.filter((c) => c.id !== id))
+  const handleDeleteComment = async (commentId) => {
+    const { error } = await supabase
+      .from('comments')
+      .delete()
+      .eq('id', commentId)
 
-  const handleEditSave = (id) => {
+    if (error) {
+      console.error('Error deleting comment:', error.message)
+      alert('Could not delete comment.')
+      return
+    }
+
+    setComments(comments.filter((c) => c.id !== commentId))
+  }
+
+  const handleEditSave = async (commentId) => {
     if (!editText.trim()) return
-    setComments(comments.map((c) => (c.id === id ? { ...c, text: editText } : c)))
+
+    const { error } = await supabase
+      .from('comments')
+      .update({ content: editText.trim(), updated_at: new Date() })
+      .eq('id', commentId)
+
+    if (error) {
+      console.error('Error updating comment:', error.message)
+      alert('Could not update comment.')
+      return
+    }
+
+    setComments(comments.map((c) => (c.id === commentId ? { ...c, text: editText.trim() } : c)))
     setEditingCommentId(null)
     setEditText('')
   }
 
-  const handleCommentVote = (id, type) => {
-    setComments(
-      comments.map((c) => {
-        if (c.id !== id) return c
-        let l = c.likes,
-          d = c.dislikes,
-          v = type
-        if (c.userVote === type) {
-          type === 'like' ? l-- : d--
-          v = null
-        } else {
-          type === 'like' ? l++ : d++
-          if (c.userVote === 'like') l--
-          if (c.userVote === 'dislike') d--
-        }
-        return { ...c, likes: l, dislikes: d, userVote: v }
-      })
-    )
-  }
-
-  const handleAddReply = (commentId) => {
+  const handleAddReply = async (parentCommentId) => {
     if (!replyText.trim()) return
-    setComments(
-      comments.map((c) =>
-        c.id === commentId
-          ? {
-              ...c,
-              replies: [
-                ...(c.replies || []),
-                { id: Date.now(), author: activeUserStr, text: replyText, time: 'Just now' },
-              ],
-            }
-          : c
+
+    if (!currentUser || !currentUser.id) {
+      alert("You must be signed in to reply.")
+      return
+    }
+
+    const replyPayload = {
+      mod_id: mod.id,
+      author_id: currentUser.id,
+      content: replyText.trim(),
+      parent_comment_id: parentCommentId,
+    }
+
+    const { data, error } = await supabase
+      .from('comments')
+      .insert([replyPayload])
+      .select(`
+        *,
+        profiles:author_id (
+          username,
+          avatar_url
+        )
+      `)
+
+    if (error) {
+      console.error('Error posting reply:', error.message)
+      alert('Failed to post reply: ' + error.message)
+    } else if (data && data[0]) {
+      const r = data[0]
+      const formattedReply = {
+        id: r.id,
+        author: r.profiles?.username || activeUserStr,
+        avatar: r.profiles?.avatar_url || '',
+        author_id: r.author_id,
+        text: r.content,
+        time: 'Just now',
+      }
+
+      setComments(
+        comments.map((c) =>
+          c.id === parentCommentId
+            ? { ...c, replies: [...(c.replies || []), formattedReply] }
+            : c
+        )
       )
-    )
-    setReplyingTo(null)
-    setReplyText('')
+      setReplyingTo(null)
+      setReplyText('')
+    }
   }
 
-  const handleDeleteReply = (commentId, replyId) => {
+  const handleDeleteReply = async (parentCommentId, replyId) => {
+    const { error } = await supabase
+      .from('comments')
+      .delete()
+      .eq('id', replyId)
+
+    if (error) {
+      console.error('Error deleting reply:', error.message)
+      return
+    }
+
     setComments(
       comments.map((c) =>
-        c.id === commentId ? { ...c, replies: c.replies.filter((r) => r.id !== replyId) } : c
+        c.id === parentCommentId
+          ? { ...c, replies: c.replies.filter((r) => r.id !== replyId) }
+          : c
       )
     )
   }
@@ -336,7 +444,7 @@ export default function ModPage({
             )}
           </div>
 
-          {/* Comments */}
+          {/* Comments Section */}
           <div className="rounded-2xl bg-surface-raised p-6 border border-white/10 space-y-6">
             <h3 className="text-lg font-bold text-white">
               Community Discussion ({comments.length})
@@ -367,7 +475,7 @@ export default function ModPage({
                 </div>
               ) : (
                 comments.map((comment) => {
-                  const isAuthor = comment.author === activeUserStr
+                  const isAuthor = comment.author_id === currentUser?.id || comment.author === activeUserStr
                   const isEditing = editingCommentId === comment.id
                   return (
                     <div
@@ -427,26 +535,7 @@ export default function ModPage({
                         <p className="text-gray-300 text-sm">{comment.text}</p>
                       )}
 
-                      <div className="flex items-center justify-between pt-1">
-                        <div className="flex items-center gap-2">
-                          {['like', 'dislike'].map((type) => (
-                            <button
-                              key={type}
-                              type="button"
-                              onClick={() => handleCommentVote(comment.id, type)}
-                              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs border transition-colors cursor-pointer ${
-                                comment.userVote === type
-                                  ? type === 'like'
-                                    ? 'bg-green-500/20 border-green-500/50 text-green-400'
-                                    : 'bg-red-500/20 border-red-500/50 text-red-400'
-                                  : 'bg-surface-overlay border-white/5 text-gray-400 hover:text-white'
-                              }`}
-                            >
-                              {type === 'like' ? '👍' : '👎'}{' '}
-                              {type === 'like' ? comment.likes : comment.dislikes}
-                            </button>
-                          ))}
-                        </div>
+                      <div className="flex items-center justify-end pt-1">
                         <button
                           type="button"
                           onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
@@ -467,7 +556,7 @@ export default function ModPage({
                                 <span className="font-semibold text-white">{reply.author}</span>
                                 <div className="flex items-center gap-2">
                                   <span className="text-gray-500">{reply.time}</span>
-                                  {reply.author === activeUserStr && (
+                                  {(reply.author_id === currentUser?.id || reply.author === activeUserStr) && (
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteReply(comment.id, reply.id)}
@@ -535,21 +624,6 @@ export default function ModPage({
                 Created by <span className="text-white font-medium">{authorName}</span>
               </p>
             </div>
-
-            {/* Founder feature toggle in sidebar */}
-            {isFounder && (
-              <button
-                type="button"
-                onClick={handleToggleFeature}
-                className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                  isFeatured
-                    ? 'bg-accent/20 border-accent text-accent hover:bg-accent/30'
-                    : 'bg-surface border-yellow-400/20 text-yellow-400 border-dashed hover:border-yellow-400/50'
-                }`}
-              >
-                {isFeatured ? '★ Remove from Featured' : '☆ Feature This Mod'}
-              </button>
-            )}
 
             {/* Like/Dislike */}
             <div className="grid grid-cols-2 gap-3">

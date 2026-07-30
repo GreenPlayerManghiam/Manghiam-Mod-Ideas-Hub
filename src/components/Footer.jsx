@@ -25,53 +25,46 @@ export default function Footer({ onNavigateDev, onNavigateInfo, onUploadClick })
             </p>
           </div>
 
-          {[
-            {
-              title: 'Community',
-              links: ['Forums', 'Discord', 'Guidelines', 'Support'],
-            },
-            {
-              title: 'Developers',
-              links: ['Post Mod Idea', 'API Docs', 'Analytics', 'Partners'],
-            },
-          ].map((col) => (
-            <div key={col.title}>
-              <h4 className="text-sm font-semibold text-white uppercase font-mono tracking-wider">{col.title}</h4>
-              <ul className="mt-3 space-y-2">
-                {col.links.map((link) => {
-                  const isDevPortalLink = ['API Docs', 'Analytics', 'Partners'].includes(link)
-                  const isUploadLink = link === 'Post Mod Idea' || link === 'Upload Mod'
+          <div>
+            <h4 className="text-sm font-semibold text-white uppercase font-mono tracking-wider">Community</h4>
+            <ul className="mt-3 space-y-2">
+              {['Forums', 'Discord', 'Guidelines', 'Support'].map((link) => (
+                <li key={link}>
+                  <button 
+                    type="button"
+                    onClick={() => onNavigateInfo(link)} 
+                    className="text-sm text-gray-500 transition-colors hover:text-gray-300 cursor-pointer text-left bg-transparent border-none p-0"
+                  >
+                    {link}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
 
-                  return (
-                    <li key={link}>
-                      {isDevPortalLink ? (
-                        <button 
-                          onClick={onNavigateDev} 
-                          className="text-sm text-gray-500 transition-colors hover:text-gray-300 cursor-pointer text-left"
-                        >
-                          {link}
-                        </button>
-                      ) : isUploadLink ? (
-                        <button 
-                          onClick={onUploadClick} 
-                          className="text-sm text-gray-500 transition-colors hover:text-gray-300 cursor-pointer text-left"
-                        >
-                          {link}
-                        </button>
-                      ) : (
-                        <button 
-                          onClick={() => onNavigateInfo(link)} 
-                          className="text-sm text-gray-500 transition-colors hover:text-gray-300 cursor-pointer text-left"
-                        >
-                          {link}
-                        </button>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          ))}
+          <div>
+            <h4 className="text-sm font-semibold text-white uppercase font-mono tracking-wider">Developers</h4>
+            <ul className="mt-3 space-y-2">
+              <li>
+                <button 
+                  type="button"
+                  onClick={onUploadClick} 
+                  className="text-sm text-gray-500 transition-colors hover:text-gray-300 cursor-pointer text-left bg-transparent border-none p-0"
+                >
+                  Post Mod Idea
+                </button>
+              </li>
+              <li>
+                <button 
+                  type="button"
+                  onClick={onNavigateDev} 
+                  className="text-sm text-accent hover:text-accent-hover font-semibold transition-colors cursor-pointer text-left bg-transparent border-none p-0 flex items-center gap-1.5"
+                >
+                  <span>⚡</span> System Command
+                </button>
+              </li>
+            </ul>
+          </div>
         </div>
 
         <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-white/5 pt-8 sm:flex-row font-mono text-xs">
@@ -79,9 +72,9 @@ export default function Footer({ onNavigateDev, onNavigateInfo, onUploadClick })
             A MANGHIAM PRODUCTION &bull; ALL RIGHTS RESERVED &copy; 2026
           </p>
           <div className="flex gap-6 text-gray-500">
-            <button onClick={() => onNavigateInfo('Privacy')} className="hover:text-white cursor-pointer">Privacy Protocol</button>
-            <button onClick={() => onNavigateInfo('Terms')} className="hover:text-white cursor-pointer">Rook Decrees</button>
-            <button onClick={() => onNavigateInfo('DMCA')} className="hover:text-white cursor-pointer">Assassination Vault</button>
+            <button type="button" onClick={() => onNavigateInfo('Privacy')} className="hover:text-white cursor-pointer bg-transparent border-none p-0 text-gray-500">Privacy Protocol</button>
+            <button type="button" onClick={() => onNavigateInfo('Terms')} className="hover:text-white cursor-pointer bg-transparent border-none p-0 text-gray-500">Rook Decrees</button>
+            <button type="button" onClick={() => onNavigateInfo('DMCA')} className="hover:text-white cursor-pointer bg-transparent border-none p-0 text-gray-500">Assassination Vault</button>
           </div>
         </div>
       </div>

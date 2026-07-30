@@ -1,18 +1,12 @@
-// ✅ FIX: import supabase from supabaseApi (single source of truth) instead of
-//         a separate lib/supabase file.
 import { supabase } from '../lib/supabaseApi'
 
-export default function Header({ currentUser, onSignInClick, onProfileClick, onUploadClick, onLogout }) {
-  // Extract display string safely from Supabase User Object or string fallback
+export default function Header({ currentUser, onSignInClick, onProfileClick, onUploadClick, onLogout, onNavigateView, onOpenModeratorPanel }) {
   const usernameStr = typeof currentUser === 'string'
     ? currentUser
     : currentUser?.username || currentUser?.user_metadata?.username || currentUser?.email?.split('@')[0] || ''
 
   const usernameLower = usernameStr.toLowerCase()
 
-  // ✅ FIX: also read avatar from currentUser.avatar (set by fetchMergedUser in App.jsx
-  //         which pulls from the profiles table) so a freshly saved profile picture
-  //         shows in the header immediately after onUpdateUser fires.
   let userAvatar = currentUser?.avatar || currentUser?.avatar_url || currentUser?.user_metadata?.avatar_url || ''
   let userRole = ''
 
@@ -34,18 +28,15 @@ export default function Header({ currentUser, onSignInClick, onProfileClick, onU
 
   const handleLogoutClick = async () => {
     try {
-      // 1. Sign out active Supabase session
       if (supabase?.auth) {
         await supabase.auth.signOut()
       }
     } catch (err) {
       console.error('Error signing out from Supabase:', err)
     } finally {
-      // 2. Wipe local storage keys
       localStorage.removeItem('modhub_current_user')
       localStorage.removeItem('currentUser')
 
-      // 3. Trigger parent state reset or page reload
       if (onLogout) {
         await onLogout()
       } else {
@@ -57,7 +48,11 @@ export default function Header({ currentUser, onSignInClick, onProfileClick, onU
   return (
     <header className="sticky top-0 z-50 border-b border-white/5 bg-surface/80 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-        <a href="#" className="group flex items-center gap-3">
+        <button 
+          type="button"
+          onClick={() => onNavigateView && onNavigateView('browse')}
+          className="group flex items-center gap-3 bg-transparent border-none cursor-pointer text-left"
+        >
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent shadow-lg shadow-accent/30 transition-transform group-hover:scale-105">
             <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
@@ -72,18 +67,22 @@ export default function Header({ currentUser, onSignInClick, onProfileClick, onU
               // A Manghiam Production
             </span>
           </div>
-        </a>
+        </button>
 
         <nav className="hidden items-center gap-8 md:flex font-mono text-xs">
-          {['Browse', 'Featured', 'Games'].map((item) => (
-            <a
-              key={item}
-              href={`#${item.toLowerCase()}`}
-              className="font-medium text-gray-400 transition-colors hover:text-white uppercase tracking-wider"
-            >
-              {item}
-            </a>
-          ))}
+          {['Browse', 'Featured', 'Games'].map((item) => {
+            const targetView = item.toLowerCase()
+            return (
+              <button
+                key={item}
+                type="button"
+                onClick={() => onNavigateView && onNavigateView(targetView)}
+                className="font-medium text-gray-400 transition-colors hover:text-white uppercase tracking-wider bg-transparent border-none cursor-pointer"
+              >
+                {item}
+              </button>
+            )
+          })}
           <button
             type="button"
             onClick={onUploadClick}
@@ -96,6 +95,19 @@ export default function Header({ currentUser, onSignInClick, onProfileClick, onU
         <div className="flex items-center gap-3">
           {currentUser ? (
             <div className="flex items-center gap-2">
+              {/* 🛡️ Moderator Panel Navigation Shortcut */}
+              {onOpenModeratorPanel && (
+                <button
+                  type="button"
+                  onClick={onOpenModeratorPanel}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/25 text-xs font-semibold transition-colors cursor-pointer"
+                  title="Open Moderator Panel"
+                >
+                  <span>🛡️</span>
+                  <span className="hidden sm:inline">Mod Panel</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={onProfileClick}

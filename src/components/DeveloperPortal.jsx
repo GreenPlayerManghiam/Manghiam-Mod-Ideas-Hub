@@ -14,13 +14,14 @@ export default function DeveloperPortal({ onBackToHome }) {
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="flex justify-between items-center mb-8">
         <button 
+          type="button"
           onClick={onBackToHome}
-          className="text-sm font-medium text-gray-400 hover:text-white transition-colors cursor-pointer flex items-center gap-2"
+          className="text-sm font-medium text-gray-400 hover:text-white transition-colors cursor-pointer flex items-center gap-2 bg-transparent border-none"
         >
           &larr; Back to Browse
         </button>
         <span className="badge bg-accent/20 text-accent text-xs px-3 py-1 font-mono">
-          CLASSIFIED // A MANGHIAM PRODUCTION
+          SYSTEM COMMAND // A MANGHIAM PRODUCTION
         </span>
       </div>
 
@@ -35,26 +36,29 @@ export default function DeveloperPortal({ onBackToHome }) {
         </p>
 
         {/* Navigation Tabs */}
-        <div className="flex gap-4 mt-6 border-t border-white/10 pt-6">
+        <div className="flex gap-4 mt-6 border-t border-white/10 pt-6 flex-wrap">
           <button 
+            type="button"
             onClick={() => setActiveTab('api')}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
+            className={`px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors border-none ${
               activeTab === 'api' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'bg-surface text-gray-400 hover:text-white'
             }`}
           >
-            🔌 API Docs (Mang-Script)
+            🔌 Protocol & API
           </button>
           <button 
+            type="button"
             onClick={() => setActiveTab('analytics')}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
+            className={`px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors border-none ${
               activeTab === 'analytics' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'bg-surface text-gray-400 hover:text-white'
             }`}
           >
-            📊 Omniscience Analytics
+            📊 Omniscience Telemetry
           </button>
           <button 
+            type="button"
             onClick={() => setActiveTab('partners')}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
+            className={`px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors border-none ${
               activeTab === 'partners' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'bg-surface text-gray-400 hover:text-white'
             }`}
           >
@@ -73,8 +77,9 @@ export default function DeveloperPortal({ onBackToHome }) {
             <div className="bg-surface rounded-xl p-4 font-mono text-xs text-accent border border-white/5 relative group">
               <code>GET /api/v1/manghiam/ego HTTP/1.1<br/>Host: api.manghiam-hub.local<br/>X-Manghiam-Token: Kojima-Level-Clearance-99</code>
               <button 
+                type="button"
                 onClick={() => copyCode('GET /api/v1/manghiam/ego HTTP/1.1\nHost: api.manghiam-hub.local\nX-Manghiam-Token: Kojima-Level-Clearance-99')}
-                className="absolute right-3 top-3 px-2 py-1 bg-surface-raised rounded text-[10px] text-gray-300 hover:text-white"
+                className="absolute right-3 top-3 px-2 py-1 bg-surface-raised rounded text-[10px] text-gray-300 hover:text-white border-none cursor-pointer"
               >
                 {copied ? 'Copied!' : 'Copy'}
               </button>
