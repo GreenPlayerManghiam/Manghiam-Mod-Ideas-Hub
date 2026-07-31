@@ -1,4 +1,4 @@
-export default function Footer({ onNavigateDev, onNavigateInfo, onUploadClick }) {
+export default function Footer({ onNavigateDev, onNavigateInfo, onNavigateForums, onUploadClick }) {
   return (
     <footer className="mt-16 border-t border-white/5 bg-surface-raised/30">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
@@ -32,7 +32,13 @@ export default function Footer({ onNavigateDev, onNavigateInfo, onUploadClick })
                 <li key={link}>
                   <button 
                     type="button"
-                    onClick={() => onNavigateInfo(link)} 
+                    onClick={() => {
+                      if (link === 'Forums') {
+                        onNavigateForums?.()
+                      } else {
+                        onNavigateInfo(link)
+                      }
+                    }} 
                     className="text-sm text-gray-500 transition-colors hover:text-gray-300 cursor-pointer text-left bg-transparent border-none p-0"
                   >
                     {link}

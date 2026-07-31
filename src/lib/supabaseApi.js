@@ -1,9 +1,9 @@
 import { supabase } from "./supabase";
 
 // ✅ FIX: re-export the raw client so App.jsx (and any other file that imports
-//         `supabase` from supabaseApi instead of supabase.js directly) works
-//         without a separate import. This resolves:
-//         "supabaseApi.js does not provide an export named 'supabase'"
+//        `supabase` from supabaseApi instead of supabase.js directly) works
+//        without a separate import. This resolves:
+//        "supabaseApi.js does not provide an export named 'supabase'"
 export { supabase } from "./supabase";
 
 /**
@@ -235,12 +235,127 @@ export function getAvatarUrl(path) {
 
 /**
  * ============================================================
+ * Forums (World-Class Community Hub)
+ * ============================================================
+ */
+
+export async function getForumTopics() {
+  const { data, error } = await supabase
+    .from('forum_topics')
+    .select('*')
+    .order('name', { ascending: true });
+  if (error) return [];
+  return data || [];
+}
+
+export async function createForumTopic(topicData) {
+  const { data, error } = await supabase
+    .from('forum_topics')
+    .insert([topicData])
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function getForumThreads() {
+  const { data, error } = await supabase
+    .from('forum_threads')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) return [];
+  return data || [];
+}
+
+export async function createForumThread(threadData) {
+  const { data, error } = await supabase
+    .from('forum_threads')
+    .insert([threadData])
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteForumThread(threadId) {
+  const { error } = await supabase
+    .from('forum_threads')
+    .delete()
+    .eq('id', threadId);
+  if (error) throw error;
+}
+
+export async function getForumComments(threadId) {
+  const { data, error } = await supabase
+    .from('forum_comments')
+    .select('*')
+    .eq('thread_id', threadId)
+    .order('created_at', { ascending: true });
+  if (error) return [];
+  return data || [];
+}
+
+export async function createForumComment(commentData) {
+  const { data, error } = await supabase
+    .from('forum_comments')
+    .insert([commentData])
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteForumComment(commentId) {
+  const { error } = await supabase
+    .from('forum_comments')
+    .delete()
+    .eq('id', commentId);
+  if (error) throw error;
+}
+
+export async function toggleThreadUpvote(threadId, userId, currentUpvotes, hasUpvoted) {
+  if (hasUpvoted) {
+    await supabase
+      .from('forum_upvotes')
+      .delete()
+      .eq('thread_id', threadId)
+      .eq('user_id', userId);
+    const newCount = Math.max(0, currentUpvotes - 1);
+    await supabase
+      .from('forum_threads')
+      .update({ upvotes: newCount })
+      .eq('id', threadId);
+    return newCount;
+  } else {
+    await supabase
+      .from('forum_upvotes')
+      .insert([{ thread_id: threadId, user_id: userId }]);
+    const newCount = currentUpvotes + 1;
+    await supabase
+      .from('forum_threads')
+      .update({ upvotes: newCount })
+      .eq('id', threadId);
+    return newCount;
+  }
+}
+
+export async function getUserUpvotes(userId) {
+  if (!userId) return [];
+  const { data } = await supabase
+    .from('forum_upvotes')
+    .select('thread_id')
+    .eq('user_id', userId);
+  return data?.map((u) => u.thread_id) || [];
+}
+
+/**
+ * ============================================================
  * Utilities
  * ============================================================
  */
 
 // ✅ FIX: added formatDownloads here so ModDetail.jsx can import it from
-//         supabaseApi instead of the non-existent '../data/mods' module.
+//        supabaseApi instead of the non-existent '../data/mods' module.
 export function formatDownloads(n) {
   if (!n) return "0";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;

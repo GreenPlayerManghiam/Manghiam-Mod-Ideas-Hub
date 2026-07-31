@@ -50,49 +50,69 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
     )
   })()
 
+  // Load User Profile and Cloud-Synced Collections from Supabase
   useEffect(() => {
     async function loadUserData() {
-      if (currentUser) {
-        if (userId) {
-          try {
-            const { data: profileData, error } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', userId)
-              .single()
+      if (!currentUser) return
 
-            if (!error && profileData) {
-              if (profileData.level) setLevel(profileData.level)
-              if (profileData.avatar_url) {
-                setAvatar(profileData.avatar_url)
-                return
-              }
-            }
-          } catch (err) {
-            console.error('Error loading profile from Supabase:', err)
+      // 1. Fetch Profile Data
+      if (userId) {
+        try {
+          const { data: profileData, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single()
+
+          if (!error && profileData) {
+            if (profileData.level) setLevel(profileData.level)
+            if (profileData.avatar_url) setAvatar(profileData.avatar_url)
+          } else if (currentUser?.user_metadata?.avatar_url) {
+            setAvatar(currentUser.user_metadata.avatar_url)
           }
+        } catch (err) {
+          console.error('Error loading profile from Supabase:', err)
         }
+      }
 
-        if (currentUser?.avatar) {
-          setAvatar(currentUser.avatar)
-          return
-        }
+      // 2. Fetch Saved Collections from Supabase (`user_collections` joined with `mods`)
+      if (userId) {
+        try {
+          const { data: collectionData, error: collectionErr } = await supabase
+            .from('user_collections')
+            .select(`
+              id,
+              mod_id,
+              mods (
+                id,
+                title,
+                category,
+                version,
+                downloads,
+                cover_image,
+                average_rating,
+                author_id
+              )
+            `)
+            .eq('user_id', userId)
 
-        const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
-        const user = users.find((u) => String(u.username || '').toLowerCase() === usernameLower)
-
-        if (user) {
-          setLevel(user.level || 'Elite Moderator')
-          setAvatar(user.avatar || currentUser?.user_metadata?.avatar_url || '')
-        } else if (currentUser?.user_metadata?.avatar_url) {
-          setAvatar(currentUser.user_metadata.avatar_url)
+          if (!collectionErr && collectionData) {
+            // Flatten the structure so components map nicely over mod fields
+            const formattedCollection = collectionData
+              .filter(item => item.mods !== null)
+              .map(item => ({
+                ...item.mods,
+                collection_entry_id: item.id
+              }))
+            setSavedCollection(formattedCollection)
+          }
+        } catch (err) {
+          console.error('Error loading cloud collection:', err)
         }
       }
     }
-    loadUserData()
 
-    const collections = JSON.parse(localStorage.getItem('modhub_collections') || '[]')
-    setSavedCollection(collections)
+    loadUserData()
   }, [currentUser, usernameLower, userId])
 
   // Apex Founders & Moderators can see all mods for complete platform oversight
@@ -100,7 +120,7 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
     if (!mod) return false
     if (isModeratorOrApex) return true 
 
-    const matchId = userId && (mod.user_id === userId || mod.owner_id === userId)
+    const matchId = userId && (mod.user_id === userId || mod.owner_id === userId || mod.author_id === userId)
     const matchAuthor = String(mod.author || '').toLowerCase() === usernameLower
     const matchEmail = currentUser?.email && String(mod.email || '').toLowerCase() === currentUser.email.toLowerCase()
     return matchId || matchAuthor || matchEmail
@@ -183,19 +203,11 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
         }
       }
 
-      const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
-      const userIndex = users.findIndex((u) => String(u.username || '').toLowerCase() === usernameLower)
-
-      if (userIndex !== -1) {
-        users[userIndex].level = level
-        users[userIndex].avatar = finalAvatarUrl
-        localStorage.setItem('modhub_users', JSON.stringify(users))
-      }
-
       setSelectedFile(null)
       setIsEditing(false)
 
       if (onUpdateUser) onUpdateUser()
+      alert("Profile updated successfully in Supabase!")
     } catch (err) {
       console.error("Error updating profile:", err)
       alert("Unexpected error saving profile. Please try again.")
@@ -204,10 +216,25 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
     }
   }
 
-  const handleRemoveFromCollection = (modId) => {
-    const updated = savedCollection.filter((m) => m.id !== modId)
-    setSavedCollection(updated)
-    localStorage.setItem('modhub_collections', JSON.stringify(updated))
+  // Remove mod from cloud-backed collection table
+  const handleRemoveFromCollection = async (modId) => {
+    if (!userId) return
+
+    try {
+      const { error } = await supabase
+        .from('user_collections')
+        .delete()
+        .eq('user_id', userId)
+        .eq('mod_id', modId)
+
+      if (error) {
+        alert("Failed to remove item from collection: " + error.message)
+      } else {
+        setSavedCollection(prev => prev.filter((m) => m.id !== modId))
+      }
+    } catch (err) {
+      console.error('Error removing from collection:', err)
+    }
   }
 
   // 🦅 Apex Feature Toggle for Mods
@@ -503,7 +530,7 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
             </div>
           )}
 
-          {/* Tab Content: Saved Collection */}
+          {/* Tab Content: Saved Collection (Cloud-Synced) */}
           {activeTab === 'collection' && (
             <div className="rounded-2xl bg-surface-raised p-6 border border-white/5">
               <h3 className="text-lg font-bold text-white mb-4">Saved Collection</h3>
@@ -530,11 +557,11 @@ export default function ProfilePage({ currentUser, mods = [], onBackToHome, onUp
                           />
                           <div>
                             <div className="text-base font-semibold text-white">{mod.title}</div>
-                            <div className="text-xs text-gray-400 mt-0.5">By {mod.author && mod.author !== 'Unknown' ? mod.author : 'Creator'} · {mod.gameName || mod.game || 'Game'}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">v{mod.version || '1.0'} · {mod.category || 'Gameplay'}</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="badge bg-accent/20 text-accent text-xs px-3 py-1">⭐ {mod.rating || 'N/A'}</span>
+                          <span className="badge bg-accent/20 text-accent text-xs px-3 py-1">⭐ {mod.average_rating || '0.0'}</span>
                           <button
                             onClick={() => handleRemoveFromCollection(mod.id)}
                             className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"

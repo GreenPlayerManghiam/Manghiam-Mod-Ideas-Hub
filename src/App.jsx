@@ -16,6 +16,7 @@ import SearchBar from './components/SearchBar'
 import ModGrid from './components/ModGrid'
 import ModDetail from './components/ModDetail'
 import ModPage from './components/ModPage'
+import Forums from './components/Forums' // ✅ Community Forums Component
 import Footer from './components/Footer'
 import AuthModal from './components/AuthModal'
 import UploadModal from './components/UploadModal'
@@ -49,7 +50,7 @@ export default function App() {
   const [selectedMod, setSelectedMod] = useState(null)
   const [activeModId, setActiveModId] = useState(null)
 
-  const [currentView, setCurrentView] = useState('home') // 'home', 'profile', 'developers', 'moderator', 'info', 'mod-detail', 'featured', 'games'
+  const [currentView, setCurrentView] = useState('home') // 'home', 'profile', 'developers', 'moderator', 'forums', 'info', 'mod-detail', 'featured', 'games'
   const [activeInfoPage, setActiveInfoPage] = useState('Privacy')
 
   const [isAuthOpen, setIsAuthOpen] = useState(false)
@@ -77,6 +78,7 @@ export default function App() {
         username: profileData?.username || authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'Modder',
         avatar: profileData?.avatar_url || authUser.user_metadata?.avatar_url || null,
         level: profileData?.level || 'Community Modder',
+        role: profileData?.role || (authUser.email === 'manghiamknongsiej@gmail.com' ? 'admin' : 'user'),
         ...(profileData || {}),
       })
     } catch (err) {
@@ -86,6 +88,7 @@ export default function App() {
         email: authUser.email,
         username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'Modder',
         avatar: authUser.user_metadata?.avatar_url || null,
+        role: authUser.email === 'manghiamknongsiej@gmail.com' ? 'admin' : 'user',
       })
     }
   }
@@ -132,6 +135,12 @@ export default function App() {
 
   // 🛡️ Global View Navigation Handler (Ensures Browse, Featured, Games work from anywhere)
   const handleNavigateView = (viewName) => {
+    if (viewName === 'forums') {
+      setCurrentView('forums')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
     setCurrentView('home')
     if (viewName === 'browse') {
       setTimeout(() => scrollToBrowse(), 50)
@@ -150,7 +159,6 @@ export default function App() {
   const handleSignOut = async () => {
     await signOut()
     setCurrentUser(null)
-    localStorage.removeItem('modhub_current_user')
     setCurrentView('home')
   }
 
@@ -158,6 +166,15 @@ export default function App() {
     const authUser = await getCurrentUser()
     await fetchMergedUser(authUser)
   }
+
+  // Check if current user is Moderator or God Mode owner
+  const isModerator = Boolean(
+    currentUser &&
+      (currentUser.email === 'manghiamknongsiej@gmail.com' ||
+        currentUser.role === 'moderator' ||
+        currentUser.role === 'admin' ||
+        currentUser.is_moderator === true)
+  )
 
   const featuredMods = useMemo(() => modsList.filter((m) => m.featured), [modsList])
 
@@ -395,6 +412,13 @@ export default function App() {
           />
         )}
 
+        {currentView === 'forums' && (
+          <Forums
+            currentUser={currentUser}
+            isModerator={isModerator}
+          />
+        )}
+
         {currentView === 'profile' && (
           <ProfilePage
             currentUser={currentUser}
@@ -427,6 +451,7 @@ export default function App() {
 
       <Footer
         onNavigateDev={() => setCurrentView('developers')}
+        onNavigateForums={() => handleNavigateView('forums')}
         onNavigateInfo={(pageName) => {
           setActiveInfoPage(pageName)
           setCurrentView('info')

@@ -1,25 +1,64 @@
 import { useState, useEffect } from 'react'
+import {
+  supabase,
+  uploadAvatarImage,
+  getAvatarUrl,
+  updateProfile,
+} from '../lib/supabaseApi'
 
 export default function ProfileModal({ isOpen, onClose, currentUser, mods, onSignOut, onUpdateUser }) {
   const [isEditing, setIsEditing] = useState(false)
   const [level, setLevel] = useState('ModHub Creator & Community Member')
   const [avatar, setAvatar] = useState('')
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [isUploading, setIsUploading] = useState(false)
+
+  const userId = currentUser?.id || ''
+  const usernameStr = currentUser?.username || currentUser?.email?.split('@')[0] || (typeof currentUser === 'string' ? currentUser : 'User')
 
   useEffect(() => {
-    if (currentUser) {
-      const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
-      const user = users.find((u) => u.username.toLowerCase() === currentUser.toLowerCase())
-      if (user) {
-        setLevel(user.level || 'ModHub Creator & Community Member')
-        setAvatar(user.avatar || '')
+    async function loadProfileData() {
+      if (!currentUser || !isOpen) return
+
+      if (userId) {
+        try {
+          const { data: profileData, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single()
+
+          if (!error && profileData) {
+            if (profileData.level) setLevel(profileData.level)
+            if (profileData.avatar_url) {
+              setAvatar(profileData.avatar_url)
+              return
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching profile from Supabase:', err)
+        }
+      }
+
+      // Fallback to user metadata if available
+      if (currentUser?.user_metadata?.avatar_url) {
+        setAvatar(currentUser.user_metadata.avatar_url)
       }
     }
-  }, [currentUser, isOpen])
+
+    loadProfileData()
+  }, [currentUser, isOpen, userId])
 
   if (!isOpen || !currentUser) return null
 
-  // Filter mods uploaded by this specific user
-  const userMods = mods.filter((mod) => mod.author.toLowerCase() === currentUser.toLowerCase())
+  // Filter mods uploaded by this specific user using UUID or author matching
+  const userMods = mods.filter((mod) => {
+    if (!mod) return false
+    return (
+      (userId && (mod.user_id === userId || mod.owner_id === userId || mod.author_id === userId)) ||
+      String(mod.author || '').toLowerCase() === usernameStr.toLowerCase()
+    )
+  })
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0]
@@ -32,66 +71,80 @@ export default function ProfileModal({ isOpen, onClose, currentUser, mods, onSig
           let canvas = document.createElement('canvas')
           let ctx = canvas.getContext('2d')
 
-          let width = img.width
-          let height = img.height
-
-          // Target a clean high-res thumbnail size (e.g., 400x400) 
-          // optimal for circles without overloading localStorage limits.
           const targetSize = 400
-
-          let oc = document.createElement('canvas')
-          let octx = oc.getContext('2d')
-
-          let curWidth = width
-          let curHeight = height
-
-          oc.width = curWidth
-          oc.height = curHeight
-          octx.drawImage(img, 0, 0)
-
-          // Step-down smoothly by half iteratively to prevent aliasing/blurring
-          while (curWidth * 0.5 > targetSize) {
-            curWidth *= 0.5
-            curHeight *= 0.5
-            canvas.width = curWidth
-            canvas.height = curHeight
-            ctx.imageSmoothingEnabled = true
-            ctx.imageSmoothingQuality = 'high'
-            ctx.drawImage(oc, 0, 0, oc.width, oc.height, 0, 0, curWidth, curHeight)
-            
-            oc.width = curWidth
-            oc.height = curHeight
-            octx.drawImage(canvas, 0, 0, curWidth, curHeight, 0, 0, curWidth, curHeight)
-          }
-
-          // Final draw to target size
           canvas.width = targetSize
           canvas.height = targetSize
+
           ctx.imageSmoothingEnabled = true
           ctx.imageSmoothingQuality = 'high'
-          ctx.drawImage(oc, 0, 0, oc.width, oc.height, 0, 0, targetSize, targetSize)
 
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
-          setAvatar(dataUrl)
+          let minDim = Math.min(img.width, img.height)
+          let startX = (img.width - minDim) / 2
+          let startY = (img.height - minDim) / 2
+
+          ctx.drawImage(img, startX, startY, minDim, minDim, 0, 0, targetSize, targetSize)
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const processedFile = new File([blob], file.name || 'avatar.jpg', { type: 'image/jpeg' })
+                setSelectedFile(processedFile)
+                setAvatar(canvas.toDataURL('image/jpeg', 0.95))
+              }
+            },
+            'image/jpeg',
+            0.95
+          )
         }
       }
       reader.readAsDataURL(file)
     }
   }
 
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault()
-    const users = JSON.parse(localStorage.getItem('modhub_users') || '[]')
-    const userIndex = users.findIndex((u) => u.username.toLowerCase() === currentUser.toLowerCase())
-    
-    if (userIndex !== -1) {
-      users[userIndex].level = level
-      users[userIndex].avatar = avatar
-      localStorage.setItem('modhub_users', JSON.stringify(users))
-    }
+    setIsUploading(true)
 
-    setIsEditing(false)
-    if (onUpdateUser) onUpdateUser()
+    try {
+      let finalAvatarUrl = avatar
+
+      if (selectedFile && userId) {
+        const fileExt = (selectedFile.name.split('.').pop() || 'jpg').toLowerCase()
+        const storagePath = `${userId}/avatar-${Date.now()}.${fileExt}`
+
+        const { error: uploadErr } = await uploadAvatarImage(storagePath, selectedFile)
+        if (uploadErr) {
+          console.error("Avatar storage upload failed:", uploadErr.message)
+          alert("Storage upload failed: " + uploadErr.message)
+        } else {
+          finalAvatarUrl = getAvatarUrl(storagePath)
+          setAvatar(finalAvatarUrl)
+        }
+      }
+
+      if (userId) {
+        const { error: updateErr } = await updateProfile(userId, {
+          avatar_url: finalAvatarUrl,
+          level: level,
+          username: usernameStr,
+        })
+        if (updateErr) {
+          console.error("Profile database sync error:", updateErr.message)
+          alert("Profile save failed: " + updateErr.message)
+          return
+        }
+      }
+
+      setSelectedFile(null)
+      setIsEditing(false)
+      if (onUpdateUser) onUpdateUser()
+      alert("Profile updated successfully in Supabase!")
+    } catch (err) {
+      console.error("Error saving profile:", err)
+      alert("Unexpected error saving profile.")
+    } finally {
+      setIsUploading(false)
+    }
   }
 
   return (
@@ -108,17 +161,17 @@ export default function ProfileModal({ isOpen, onClose, currentUser, mods, onSig
             {avatar ? (
               <img 
                 src={avatar} 
-                alt={currentUser} 
+                alt={usernameStr} 
                 className="h-20 w-20 rounded-full object-cover border-2 border-accent shadow-xl shrink-0" 
                 style={{ imageRendering: '-webkit-optimize-contrast' }}
               />
             ) : (
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-accent text-3xl font-bold text-white shadow-xl shrink-0">
-                {currentUser.charAt(0).toUpperCase()}
+                {usernameStr.charAt(0).toUpperCase()}
               </div>
             )}
             <div>
-              <h3 className="font-display text-2xl font-bold text-white">{currentUser}</h3>
+              <h3 className="font-display text-2xl font-bold text-white">{usernameStr}</h3>
               <p className="text-xs text-accent font-medium mt-0.5">{level}</p>
             </div>
           </div>
@@ -142,7 +195,9 @@ export default function ProfileModal({ isOpen, onClose, currentUser, mods, onSig
               <input type="text" value={level} onChange={(e) => setLevel(e.target.value)} className="w-full rounded-xl border border-white/10 bg-surface py-2 px-3 text-sm text-white outline-none focus:border-accent" />
             </div>
             <div className="flex gap-2 pt-2">
-              <button type="submit" className="btn-primary text-xs py-2 px-4 cursor-pointer">Save Changes</button>
+              <button type="submit" disabled={isUploading} className="btn-primary text-xs py-2 px-4 cursor-pointer disabled:opacity-50">
+                {isUploading ? 'Saving...' : 'Save Changes'}
+              </button>
               <button type="button" onClick={() => setIsEditing(false)} className="btn-secondary text-xs py-2 px-4 cursor-pointer">Cancel</button>
             </div>
           </form>
@@ -177,7 +232,6 @@ export default function ProfileModal({ isOpen, onClose, currentUser, mods, onSig
                 <div key={mod.id} className="flex items-center justify-between rounded-xl bg-surface-overlay p-3 border border-surface-raised">
                   <div>
                     <div className="text-sm font-medium text-white">{mod.title}</div>
-                    {/* FIX: fallback to mod.game for user-uploaded mods */}
                     <div className="text-xs text-gray-400">{mod.gameName || mod.game} · {mod.category}</div>
                   </div>
                   <span className="badge bg-accent/20 text-accent text-xs">v{mod.version}</span>
