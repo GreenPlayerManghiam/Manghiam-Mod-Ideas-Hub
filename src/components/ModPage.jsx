@@ -141,9 +141,10 @@ export default function ModPage({
   const authorName =
     typeof mod.author === 'string'
       ? mod.author
-      : mod.author?.username || 'Community Modder'
+      : mod.author?.username || mod.profiles?.username || 'Community Modder'
 
   const gameTitle = mod.gameName || mod.game?.name || mod.game || 'Game Mod'
+  const categoryName = mod.category || 'Mod'
 
   const persistVotes = (newLikes, newDislikes, newVote) => {
     const allVotes = JSON.parse(localStorage.getItem('modhub_mod_votes') || '{}')
@@ -435,7 +436,7 @@ export default function ModPage({
                 {mod.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="text-xs font-mono bg-surface px-3 py-1 rounded-lg text-accent border border-white/5"
+                    className="px-2.5 py-1 text-xs font-mono rounded-lg bg-surface text-accent border border-white/5"
                   >
                     #{tag}
                   </span>
@@ -615,6 +616,9 @@ export default function ModPage({
               <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <span className="badge bg-accent/20 text-accent text-xs px-2.5 py-1 font-mono">
                   {gameTitle}
+                </span>
+                <span className="badge bg-surface-overlay text-purple-300 border border-purple-500/30 text-xs px-2.5 py-1">
+                  {categoryName}
                 </span>
                 <span className="text-xs font-mono text-gray-400">v{mod.version || '1.0'}</span>
                 {isFeatured && <span className="badge bg-accent/20 text-accent text-xs">⭐ Featured</span>}

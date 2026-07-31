@@ -1,6 +1,11 @@
-import { categories } from '../data/mods'
-
-export default function SearchBar({ query, onQueryChange, selectedCategory, onCategoryChange, resultCount }) {
+export default function SearchBar({ 
+  query, 
+  onQueryChange, 
+  selectedCategory, 
+  onCategoryChange, 
+  categories = [], 
+  resultCount 
+}) {
   return (
     <div id="browse" className="mx-auto max-w-7xl px-4 pt-12 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -29,21 +34,39 @@ export default function SearchBar({ query, onQueryChange, selectedCategory, onCa
         </div>
       </div>
 
+      {/* Dynamic Category Filter Pills */}
       <div className="mt-6 flex flex-wrap gap-2">
-        {categories.map((cat) => (
-          <button
-            key={cat}
-            type="button"
-            onClick={() => onCategoryChange(cat)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-              selectedCategory === cat
-                ? 'bg-accent text-white'
-                : 'bg-surface-overlay text-gray-400 hover:bg-surface-raised hover:text-white'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
+        {/* Always include the 'All' filter button first */}
+        <button
+          type="button"
+          onClick={() => onCategoryChange('All')}
+          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
+            selectedCategory === 'All'
+              ? 'bg-accent text-white'
+              : 'bg-surface-overlay text-gray-400 hover:bg-surface-raised hover:text-white'
+          }`}
+        >
+          All
+        </button>
+
+        {/* Map through dynamic database categories */}
+        {categories.map((cat) => {
+          const categoryName = typeof cat === 'string' ? cat : cat.name
+          return (
+            <button
+              key={cat.id || categoryName}
+              type="button"
+              onClick={() => onCategoryChange(categoryName)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
+                selectedCategory === categoryName
+                  ? 'bg-accent text-white'
+                  : 'bg-surface-overlay text-gray-400 hover:bg-surface-raised hover:text-white'
+              }`}
+            >
+              {categoryName}
+            </button>
+          )
+        })}
       </div>
     </div>
   )

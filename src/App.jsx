@@ -31,6 +31,7 @@ import ModeratorPanel from './components/ModeratorPanel' // ✅ Moderators assem
 export default function App() {
   const [modsList, setModsList] = useState([])
   const [gamesList, setGamesList] = useState([])
+  const [categoriesList, setCategoriesList] = useState([]) // ✅ NEW: Dynamic categories state
   const [currentUser, setCurrentUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -93,7 +94,7 @@ export default function App() {
     }
   }
 
-  // 1. Fetch initial data from Supabase on mount
+  // 1. Fetch initial data from Supabase on mount (Including Categories)
   useEffect(() => {
     async function initData() {
       setLoading(true)
@@ -101,13 +102,15 @@ export default function App() {
         const user = await getCurrentUser()
         await fetchMergedUser(user)
 
-        const [{ data: modsData }, { data: gamesData }] = await Promise.all([
+        const [{ data: modsData }, { data: gamesData }, { data: catData }] = await Promise.all([
           getMods(),
           getGames(),
+          supabase.from('categories').select('*').order('name'),
         ])
 
         if (modsData) setModsList(modsData)
         if (gamesData) setGamesList(gamesData)
+        if (catData) setCategoriesList(catData)
       } catch (err) {
         console.error('Failed to initialize Supabase data:', err)
       } finally {
@@ -383,6 +386,7 @@ export default function App() {
                 onQueryChange={setQuery}
                 selectedCategory={selectedCategory}
                 onCategoryChange={setSelectedCategory}
+                categories={categoriesList} // ✅ Pass dynamic categories list into SearchBar
                 resultCount={filteredMods.length}
               />
             </div>

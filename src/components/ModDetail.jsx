@@ -56,9 +56,10 @@ export default function ModDetail({
   const authorName =
     typeof mod.author === 'string'
       ? mod.author
-      : mod.author?.username || 'Community Modder'
+      : mod.author?.username || mod.profiles?.username || 'Community Modder'
 
   const gameTitle = mod.gameName || mod.game?.name || mod.game || 'Game Mod'
+  const categoryName = mod.category || 'Mod'
 
   const handleToggleCollection = () => {
     const collections = JSON.parse(localStorage.getItem('modhub_collections') || '[]')
@@ -185,7 +186,7 @@ export default function ModDetail({
         <div className="p-6 sm:p-8">
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <span className="badge bg-accent/20 text-accent-hover">{gameTitle}</span>
-            {mod.category && <span className="badge bg-surface-overlay text-gray-400">{mod.category}</span>}
+            <span className="badge bg-surface-overlay text-purple-300 border border-purple-500/30">{categoryName}</span>
             <span className="badge bg-surface-overlay text-gray-400">v{mod.version || '1.0'}</span>
             {mod.featured && (
               <span className="badge bg-accent/20 text-accent">⭐ Featured</span>
@@ -197,8 +198,8 @@ export default function ModDetail({
               <h2 id="mod-detail-title" className="font-display text-2xl font-bold text-white">
                 {mod.title}
               </h2>
-              <p className="mt-1 text-sm text-gray-500">
-                by <span className="text-gray-300 font-medium">{authorName}</span> · Updated {mod.updated || 'Recently'}
+              <p className="mt-1 text-sm text-gray-400">
+                Created by <span className="text-white font-medium">{authorName}</span> · Updated {mod.updated || 'Recently'}
               </p>
             </div>
           </div>
@@ -253,7 +254,9 @@ export default function ModDetail({
           {Array.isArray(mod.tags) && mod.tags.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
               {mod.tags.map((tag) => (
-                <span key={tag} className="badge bg-surface-overlay text-gray-400">#{tag}</span>
+                <span key={tag} className="px-2.5 py-1 text-xs font-medium rounded-md bg-surface-overlay border border-white/10 text-gray-300">
+                  #{tag}
+                </span>
               ))}
             </div>
           )}

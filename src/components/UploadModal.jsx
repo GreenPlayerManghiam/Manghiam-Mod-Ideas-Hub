@@ -6,12 +6,14 @@ import {
   uploadModImage,
   getModImageUrl,
   getCurrentUser,
+  supabase, // Import supabase client to query categories
 } from '../lib/supabaseApi'
 
 const MAX_IMAGES = 5
 
 export default function UploadModal({ isOpen, onClose, onAddMod }) {
   const [gamesList, setGamesList] = useState([])
+  const [categoriesList, setCategoriesList] = useState([]) // State for categories
   const [images, setImages] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const formRef = useRef(null)
@@ -19,16 +21,29 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
   useEffect(() => {
     if (!isOpen) return
 
-    const loadGames = async () => {
-      const { data, error } = await getGames()
-      if (error) {
-        console.error('Failed to load games:', error)
-        return
+    const loadData = async () => {
+      // 1. Load Games
+      const { data: gamesData, error: gamesError } = await getGames()
+      if (gamesError) {
+        console.error('Failed to load games:', gamesError)
+      } else {
+        setGamesList(gamesData || [])
       }
-      setGamesList(data || [])
+
+      // 2. Load Categories dynamically
+      const { data: catData, error: catError } = await supabase
+        .from('categories')
+        .select('*')
+        .order('name')
+      
+      if (catError) {
+        console.error('Failed to load categories:', catError)
+      } else {
+        setCategoriesList(catData || [])
+      }
     }
 
-    loadGames()
+    loadData()
   }, [isOpen])
 
   if (!isOpen) return null
@@ -82,6 +97,31 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
     setGamesList((prev) => [...prev, newGame].sort((a, b) => a.name.localeCompare(b.name)))
   }
 
+  // Optional: Allow admins/mods to add custom categories inline
+  const handleAddCustomCategory = async () => {
+    const catName = prompt("Enter new category name (e.g., 'Soundtrack'):")
+    if (!catName) return
+
+    if (categoriesList.some((c) => c.name.toLowerCase() === catName.toLowerCase())) {
+      alert('This category already exists!')
+      return
+    }
+
+    const slug = catName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+    const { data: newCat, error } = await supabase
+      .from('categories')
+      .insert([{ name: catName, slug }])
+      .select()
+      .single()
+
+    if (error) {
+      alert('Failed to add category (Make sure you have admin/mod rights): ' + error.message)
+      return
+    }
+
+    setCategoriesList((prev) => [...prev, newCat].sort((a, b) => a.name.localeCompare(b.name)))
+  }
+
   const handleClose = () => {
     images.forEach((img) => URL.revokeObjectURL(img.preview))
     setImages([])
@@ -105,7 +145,7 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
 
       const formData = new FormData(e.target)
       const gameId = formData.get('game')
-      const username = user?.user_metadata?.username || user?.email?.split('@')[0] || 'Anonymous'
+      const selectedCategory = formData.get('category') // Get selected category from form
 
       const uploadedUrls = []
       for (const img of images) {
@@ -134,7 +174,7 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
         description: formData.get('description'),
         author_id: user.id,
         game_id: gameId,
-        category: 'Gameplay',
+        category: selectedCategory, // Save the dynamic category name to database
         cover_image: coverImage,
         gallery_images: galleryImages,
         version: '1.0',
@@ -187,7 +227,7 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
             />
           </div>
 
-          {/* Game */}
+          {/* Game Selection */}
           <div>
             <div className="flex justify-between items-center mb-1">
               <label className="block text-sm text-gray-400">Game</label>
@@ -209,6 +249,33 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
               {gamesList.map((game) => (
                 <option key={game.id} value={game.id}>
                   {game.icon} {game.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Category Selection (NEW) */}
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-sm text-gray-400">Category</label>
+              <button
+                type="button"
+                onClick={handleAddCustomCategory}
+                className="text-xs text-accent font-medium hover:underline cursor-pointer"
+              >
+                + Add Category (Mod/Admin)
+              </button>
+            </div>
+            <select
+              name="category"
+              required
+              defaultValue=""
+              className="w-full rounded-xl border border-white/10 bg-surface-overlay py-2.5 px-3 text-sm text-white outline-none focus:border-accent"
+            >
+              <option value="" disabled>Select a category</option>
+              {categoriesList.map((cat) => (
+                <option key={cat.id} value={cat.name}>
+                  {cat.name}
                 </option>
               ))}
             </select>
@@ -275,7 +342,7 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
                       className="absolute top-1 right-1 h-5 w-5 rounded-full bg-red-500/80 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-red-500"
                       title="Remove image"
                     >
-                      ×
+                      &times;
                     </button>
                   </div>
                 ))}
