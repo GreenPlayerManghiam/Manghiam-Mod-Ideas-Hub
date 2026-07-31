@@ -43,11 +43,27 @@ export default function ModPage({
   const [editingCommentId, setEditingCommentId] = useState(null)
   const [editText, setEditText] = useState('')
 
-  const [isSaved, setIsSaved] = useState(() => {
-    if (!mod) return false
-    const collections = JSON.parse(localStorage.getItem('modhub_collections') || '[]')
-    return collections.some((m) => m.id === mod.id)
-  })
+  const [isSaved, setIsSaved] = useState(false)
+
+  // Check if item is already in Supabase collection on mount
+  useEffect(() => {
+    if (!currentUser?.id || !mod?.id) return
+
+    const checkSavedStatus = async () => {
+      const { data, error } = await supabase
+        .from('user_collections')
+        .select('mod_id')
+        .eq('user_id', currentUser.id)
+        .eq('mod_id', mod.id)
+        .maybeSingle()
+
+      if (!error && data) {
+        setIsSaved(true)
+      }
+    }
+
+    checkSavedStatus()
+  }, [currentUser?.id, mod?.id])
 
   // Fetch Supabase comments & build threaded structure (parent -> replies)
   useEffect(() => {
@@ -342,18 +358,49 @@ export default function ModPage({
     )
   }
 
-  const handleToggleCollection = () => {
-    const collections = JSON.parse(localStorage.getItem('modhub_collections') || '[]')
-    if (isSaved) {
-      localStorage.setItem(
-        'modhub_collections',
-        JSON.stringify(collections.filter((m) => m.id !== mod.id))
-      )
-      setIsSaved(false)
-    } else {
-      collections.push(mod)
-      localStorage.setItem('modhub_collections', JSON.stringify(collections))
-      setIsSaved(true)
+  const handleSaveToCollection = async () => {
+    if (!currentUser || !currentUser.id) {
+      alert("Please sign in to save items to your collection!")
+      return
+    }
+
+    try {
+      if (isSaved) {
+        const { error } = await supabase
+          .from('user_collections')
+          .delete()
+          .eq('user_id', currentUser.id)
+          .eq('mod_id', mod.id)
+
+        if (error) {
+          console.error("Collection remove error:", error.message)
+          alert("Failed to remove mod: " + error.message)
+        } else {
+          setIsSaved(false)
+          alert("Removed from your saved collection!")
+        }
+      } else {
+        const { error } = await supabase
+          .from('user_collections')
+          .insert([
+            { user_id: currentUser.id, mod_id: mod.id }
+          ])
+
+        if (error) {
+          if (error.code === '23505') {
+            setIsSaved(true)
+            alert("This mod is already in your saved collection!")
+          } else {
+            console.error("Collection insert error:", error.message)
+            alert("Failed to save mod: " + error.message)
+          }
+        } else {
+          setIsSaved(true)
+          alert("Successfully added to your saved collection!")
+        }
+      }
+    } catch (err) {
+      console.error("Unexpected error saving collection:", err)
     }
   }
 
@@ -710,7 +757,7 @@ export default function ModPage({
             {/* Collection */}
             <button
               type="button"
-              onClick={handleToggleCollection}
+              onClick={handleSaveToCollection}
               className={`w-full py-3 text-sm font-semibold rounded-xl border transition-colors cursor-pointer flex items-center justify-center gap-2 ${
                 isSaved
                   ? 'bg-accent/20 border-accent text-accent'

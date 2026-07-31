@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react'
-// ✅ FIX: import formatDownloads from supabaseApi (which exports it) instead of
-//        ../data/mods which may not exist in all project setups.
-import { formatDownloads } from '../lib/supabaseApi'
+import { formatDownloads, supabase } from '../lib/supabaseApi'
 
 const PLACEHOLDER_IMAGE =
   'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80'
@@ -18,8 +16,7 @@ export default function ModDetail({
   const [userRating, setUserRating] = useState(null)
   const [galleryIndex, setGalleryIndex] = useState(0)
 
-  // ✅ FIX: safely extract a string identifier from currentUser whether it is a
-  //         Supabase user object, a merged profile object, or a plain string.
+  // Safely extract a string identifier for ratings
   const activeUserIdentifier =
     (typeof currentUser === 'string' ? currentUser : null) ||
     currentUser?.username ||
@@ -27,25 +24,53 @@ export default function ModDetail({
     localStorage.getItem('modhub_current_user') ||
     null
 
+  // Check Supabase collection and local ratings on mount
   useEffect(() => {
-    if (mod) {
-      setGalleryIndex(0)
-      // Check collection status
-      const collections = JSON.parse(localStorage.getItem('modhub_collections') || '[]')
-      setIsSaved(collections.some((m) => m.id === mod.id))
-      // Check user rating
-      if (activeUserIdentifier) {
-        const allRatings = JSON.parse(localStorage.getItem('modhub_mod_ratings') || '{}')
-        setUserRating(allRatings[mod.id]?.[activeUserIdentifier] || null)
+    if (!mod) return
+
+    setGalleryIndex(0)
+
+    const checkSavedStatus = async () => {
+      let userId = currentUser?.id
+      if (!userId) {
+        const { data: { session } } = await supabase.auth.getSession()
+        userId = session?.user?.id
+      }
+
+      if (userId) {
+        const { data, error } = await supabase
+          .from('user_collections')
+          .select('mod_id')
+          .eq('user_id', userId)
+          .eq('mod_id', mod.id)
+          .maybeSingle()
+
+        if (!error && data) {
+          setIsSaved(true)
+        } else {
+          setIsSaved(false)
+        }
       } else {
-        setUserRating(null)
+        // Fallback to local storage if no user session
+        const collections = JSON.parse(localStorage.getItem('modhub_collections') || '[]')
+        setIsSaved(collections.some((m) => m.id === mod.id))
       }
     }
-  }, [mod, activeUserIdentifier])
+
+    checkSavedStatus()
+
+    // Check user rating using the safe active identifier
+    if (activeUserIdentifier) {
+      const allRatings = JSON.parse(localStorage.getItem('modhub_mod_ratings') || '{}')
+      setUserRating(allRatings[mod.id]?.[activeUserIdentifier] || null)
+    } else {
+      setUserRating(null)
+    }
+  }, [mod, currentUser?.id]) // ✅ Fixed: Strictly stable dependency array size of 2
 
   if (!mod) return null
 
-  // Build image list (support both Supabase gallery_images / cover_image & legacy static images)
+  // Build image list
   const rawImages =
     (mod.gallery_images && mod.gallery_images.length > 0 && mod.gallery_images) ||
     (mod.images && mod.images.length > 0 && mod.images) ||
@@ -61,18 +86,50 @@ export default function ModDetail({
   const gameTitle = mod.gameName || mod.game?.name || mod.game || 'Game Mod'
   const categoryName = mod.category || 'Mod'
 
-  const handleToggleCollection = () => {
-    const collections = JSON.parse(localStorage.getItem('modhub_collections') || '[]')
-    if (isSaved) {
-      localStorage.setItem(
-        'modhub_collections',
-        JSON.stringify(collections.filter((m) => m.id !== mod.id))
-      )
-      setIsSaved(false)
-    } else {
-      collections.push(mod)
-      localStorage.setItem('modhub_collections', JSON.stringify(collections))
-      setIsSaved(true)
+  const handleToggleCollection = async () => {
+    let userId = currentUser?.id
+    if (!userId) {
+      const { data: { session } } = await supabase.auth.getSession()
+      userId = session?.user?.id
+    }
+
+    if (!userId) {
+      alert('Please sign in to save items to your collection!')
+      return
+    }
+
+    try {
+      if (isSaved) {
+        const { error } = await supabase
+          .from('user_collections')
+          .delete()
+          .eq('user_id', userId)
+          .eq('mod_id', mod.id)
+
+        if (error) {
+          console.error('Collection remove error:', error.message)
+          alert('Failed to remove mod: ' + error.message)
+        } else {
+          setIsSaved(false)
+        }
+      } else {
+        const { error } = await supabase
+          .from('user_collections')
+          .insert([{ user_id: userId, mod_id: mod.id }])
+
+        if (error) {
+          if (error.code === '23505') {
+            setIsSaved(true)
+          } else {
+            console.error('Collection insert error:', error.message)
+            alert('Failed to save mod: ' + error.message)
+          }
+        } else {
+          setIsSaved(true)
+        }
+      }
+    } catch (err) {
+      console.error('Unexpected error toggling collection:', err)
     }
   }
 
@@ -143,7 +200,6 @@ export default function ModDetail({
           />
           <div className="absolute inset-0 bg-gradient-to-t from-surface-raised via-surface-raised/20 to-transparent" />
 
-          {/* Gallery nav — only show if multiple images */}
           {images.length > 1 && (
             <>
               <button
@@ -160,7 +216,6 @@ export default function ModDetail({
               >
                 ›
               </button>
-              {/* Dot indicators */}
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
                 {images.map((_, i) => (
                   <button
@@ -276,7 +331,7 @@ export default function ModDetail({
                 onClick={handleToggleCollection}
                 className={`flex-1 py-3 rounded-xl font-semibold border transition-colors cursor-pointer flex items-center justify-center gap-2 ${
                   isSaved
-                    ? 'bg-accent/20 border-accent text-accent'
+                    ? 'bg-accent/25 border-accent text-accent shadow-lg shadow-accent/10'
                     : 'btn-secondary text-gray-300 hover:text-white'
                 }`}
               >
