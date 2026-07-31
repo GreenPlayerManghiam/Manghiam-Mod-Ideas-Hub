@@ -10,6 +10,7 @@ export default function ModPage({
   onDownload,
   onRate,
   currentUser,
+  onEdit,
 }) {
   const activeUserStr =
     (typeof currentUser === 'string' ? currentUser : null) ||
@@ -147,17 +148,17 @@ export default function ModPage({
   // Guard moved after all hooks
   if (!mod) return null
 
+  const authorName =
+    typeof mod.author === 'string'
+      ? mod.author
+      : mod.author?.username || mod.profiles?.username || 'Community Modder'
+
   const rawImages =
     (mod.gallery_images && mod.gallery_images.length > 0 && mod.gallery_images) ||
     (mod.images && mod.images.length > 0 && mod.images) ||
     [mod.cover_image || mod.image || PLACEHOLDER_IMAGE]
 
   const images = rawImages.filter(Boolean)
-
-  const authorName =
-    typeof mod.author === 'string'
-      ? mod.author
-      : mod.author?.username || mod.profiles?.username || 'Community Modder'
 
   const gameTitle = mod.gameName || mod.game?.name || mod.game || 'Game Mod'
   const categoryName = mod.category || 'Mod'
@@ -523,7 +524,7 @@ export default function ModPage({
                 </div>
               ) : (
                 comments.map((comment) => {
-                  const isAuthor = comment.author_id === currentUser?.id || comment.author === activeUserStr
+                  const isCommentAuthor = comment.author_id === currentUser?.id || comment.author === activeUserStr
                   const isEditing = editingCommentId === comment.id
                   return (
                     <div
@@ -534,7 +535,7 @@ export default function ModPage({
                         <span className="font-semibold text-white text-sm">{comment.author}</span>
                         <div className="flex items-center gap-3">
                           <span className="text-xs text-gray-500">{comment.time}</span>
-                          {isAuthor && !isEditing && (
+                          {isCommentAuthor && !isEditing && (
                             <div className="flex items-center gap-2 text-xs">
                               <button
                                 onClick={() => {
@@ -675,6 +676,21 @@ export default function ModPage({
                 Created by <span className="text-white font-medium">{authorName}</span>
               </p>
             </div>
+
+            {/* ✏️ GUARANTEED HARDCODED EDIT BUTTON */}
+            <button
+              type="button"
+              onClick={() => {
+                if (onEdit) {
+                  onEdit(mod)
+                } else {
+                  alert("Edit button clicked! (Note: onEdit prop is missing from the parent component)")
+                }
+              }}
+              className="w-full py-2.5 px-4 rounded-xl bg-accent/20 border border-accent/40 text-accent hover:bg-accent/30 text-xs font-semibold cursor-pointer transition-colors flex items-center justify-center gap-2 shadow-lg"
+            >
+              <span>✏️</span> Edit Mod Details
+            </button>
 
             {/* Like/Dislike */}
             <div className="grid grid-cols-2 gap-3">

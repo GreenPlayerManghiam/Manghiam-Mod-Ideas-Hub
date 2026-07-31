@@ -16,22 +16,22 @@ import SearchBar from './components/SearchBar'
 import ModGrid from './components/ModGrid'
 import ModDetail from './components/ModDetail'
 import ModPage from './components/ModPage'
-import Forums from './components/Forums' // ✅ Community Forums Component
+import Forums from './components/Forums'
 import Footer from './components/Footer'
 import AuthModal from './components/AuthModal'
 import UploadModal from './components/UploadModal'
 import ProfilePage from './components/ProfilePage'
 import DeveloperPortal from './components/DeveloperPortal'
 import InfoPage from './components/InfoPage'
-import NSFWWarning from './components/NSFWWarning' // ✅ NSFW Age/Content Gate Component
-import NortheastFireflies from './components/NortheastFireflies' // ✅ NightEarth tactical map background
-import CursorTrail from './components/CursorTrail' // ✅ Fluid mouse-following ribbon trail
-import ModeratorPanel from './components/ModeratorPanel' // ✅ Moderators assemble component
+import NSFWWarning from './components/NSFWWarning'
+import NortheastFireflies from './components/NortheastFireflies'
+import CursorTrail from './components/CursorTrail'
+import ModeratorPanel from './components/ModeratorPanel'
 
 export default function App() {
   const [modsList, setModsList] = useState([])
   const [gamesList, setGamesList] = useState([])
-  const [categoriesList, setCategoriesList] = useState([]) // ✅ NEW: Dynamic categories state
+  const [categoriesList, setCategoriesList] = useState([])
   const [currentUser, setCurrentUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -50,8 +50,9 @@ export default function App() {
   // Modal preview state vs Full Page state
   const [selectedMod, setSelectedMod] = useState(null)
   const [activeModId, setActiveModId] = useState(null)
+  const [editingMod, setEditingMod] = useState(null)
 
-  const [currentView, setCurrentView] = useState('home') // 'home', 'profile', 'developers', 'moderator', 'forums', 'info', 'mod-detail', 'featured', 'games'
+  const [currentView, setCurrentView] = useState('home')
   const [activeInfoPage, setActiveInfoPage] = useState('Privacy')
 
   const [isAuthOpen, setIsAuthOpen] = useState(false)
@@ -94,7 +95,7 @@ export default function App() {
     }
   }
 
-  // 1. Fetch initial data from Supabase on mount (Including Categories)
+  // 1. Fetch initial data from Supabase on mount
   useEffect(() => {
     async function initData() {
       setLoading(true)
@@ -136,7 +137,6 @@ export default function App() {
     browseRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  // 🛡️ Global View Navigation Handler (Ensures Browse, Featured, Games work from anywhere)
   const handleNavigateView = (viewName) => {
     if (viewName === 'forums') {
       setCurrentView('forums')
@@ -170,7 +170,6 @@ export default function App() {
     await fetchMergedUser(authUser)
   }
 
-  // Check if current user is Moderator or God Mode owner
   const isModerator = Boolean(
     currentUser &&
       (currentUser.email === 'manghiamknongsiej@gmail.com' ||
@@ -213,7 +212,41 @@ export default function App() {
     setModsList((prev) => [newMod, ...prev])
   }
 
-  // 🛡️ Enhanced Deletion Handler with Database Synchronization
+  // Handler to update an existing mod and persist changes to Supabase
+  const handleUpdateMod = async (updatedModData) => {
+    setModsList((prev) =>
+      prev.map((mod) => (mod.id === updatedModData.id ? { ...mod, ...updatedModData } : mod))
+    )
+    setEditingMod(null)
+    setSelectedMod(null)
+
+    try {
+      const { error } = await supabase
+        .from('mods')
+        .update({
+          title: updatedModData.title,
+          description: updatedModData.description,
+          category: updatedModData.category,
+          version: updatedModData.version,
+          tags: updatedModData.tags,
+          game: updatedModData.game,
+          cover_image: updatedModData.cover_image || updatedModData.image,
+          gallery_images: updatedModData.gallery_images,
+        })
+        .eq('id', updatedModData.id)
+
+      if (error) {
+        console.error('Supabase update error:', error.message)
+        alert('Failed to update mod in database: ' + error.message)
+      } else {
+        alert('Mod successfully updated in Supabase!')
+      }
+    } catch (err) {
+      console.error('Unexpected error during mod update:', err)
+      alert('An unexpected error occurred while updating the mod.')
+    }
+  }
+
   const handleDeleteMod = async (modId) => {
     setModsList((prevMods) => prevMods.filter((mod) => mod.id !== modId))
     if (selectedMod && selectedMod.id === modId) {
@@ -236,11 +269,9 @@ export default function App() {
     }
   }
 
-  // 🛡️ Handler to Toggle Featured Status in Supabase with .select()
   const handleToggleFeature = async (modId, currentFeaturedStatus) => {
     const newFeaturedState = !currentFeaturedStatus
 
-    // 1. Optimistic UI updates
     setModsList((prevMods) =>
       prevMods.map((mod) =>
         mod.id === modId ? { ...mod, featured: newFeaturedState } : mod
@@ -250,29 +281,23 @@ export default function App() {
       prev && prev.id === modId ? { ...prev, featured: newFeaturedState } : prev
     )
 
-    // 2. Sync change to Supabase database with .select() to force execution & return
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('mods')
         .update({ featured: newFeaturedState })
         .eq('id', modId)
         .select()
 
       if (error) {
-        console.error('Failed to update featured status in database:', error.message)
-        alert('Failed to update featured status: ' + error.message)
-        // Revert optimistic update on error
+        console.error('Failed to update featured status:', error.message)
         setModsList((prevMods) =>
           prevMods.map((mod) =>
             mod.id === modId ? { ...mod, featured: currentFeaturedStatus } : mod
           )
         )
-      } else {
-        console.log('Successfully updated featured status in Supabase:', data)
       }
     } catch (err) {
       console.error('Unexpected error toggling feature:', err)
-      alert('An unexpected error occurred while toggling the featured state.')
     }
   }
 
@@ -280,7 +305,6 @@ export default function App() {
     const targetMod = modsList.find((m) => m.id === modId)
     const newDownloadCount = (targetMod?.downloads || 0) + 1
 
-    // 1. Optimistic UI updates
     setModsList((prevMods) =>
       prevMods.map((mod) =>
         mod.id === modId ? { ...mod, downloads: newDownloadCount } : mod
@@ -292,16 +316,11 @@ export default function App() {
         : prev
     )
 
-    // 2. Sync download count permanently to Supabase database
     try {
-      const { error } = await supabase
+      await supabase
         .from('mods')
         .update({ downloads: newDownloadCount })
         .eq('id', modId)
-
-      if (error) {
-        console.error('Failed to update download count in database:', error.message)
-      }
     } catch (err) {
       console.error('Unexpected error syncing download count:', err)
     }
@@ -309,31 +328,13 @@ export default function App() {
 
   const handleRate = (modId, score) => {
     setModsList((prevMods) =>
-      prevMods.map((mod) => {
-        if (mod.id === modId) {
-          return {
-            ...mod,
-            rating: score,
-          }
-        }
-        return mod
-      })
+      prevMods.map((mod) => (mod.id === modId ? { ...mod, rating: score } : mod))
     )
-
-    setSelectedMod((prev) => {
-      if (prev && prev.id === modId) {
-        return {
-          ...prev,
-          rating: score,
-        }
-      }
-      return prev
-    })
+    setSelectedMod((prev) => (prev && prev.id === modId ? { ...prev, rating: score } : prev))
   }
 
   const activeFullMod = modsList.find((m) => m.id === activeModId)
 
-  // Shared handler to open full mod detail page view
   const handleOpenFullPage = (modId) => {
     setSelectedMod(null)
     setActiveModId(modId)
@@ -343,13 +344,9 @@ export default function App() {
 
   return (
     <div className="relative min-h-screen">
-      {/* 🛡️ NSFW Warning Gate (Renders BEFORE everything else if not cleared) */}
       {!nsfwCleared && <NSFWWarning onAccept={() => setNsfwCleared(true)} />}
 
-      {/* 1. Background NightEarth Map & Independent Fireflies */}
       <NortheastFireflies />
-
-      {/* 2. Fluid Mouse Ribbon Trail Layer */}
       <CursorTrail />
 
       <Header
@@ -386,7 +383,7 @@ export default function App() {
                 onQueryChange={setQuery}
                 selectedCategory={selectedCategory}
                 onCategoryChange={setSelectedCategory}
-                categories={categoriesList} // ✅ Pass dynamic categories list into SearchBar
+                categories={categoriesList}
                 resultCount={filteredMods.length}
               />
             </div>
@@ -413,6 +410,7 @@ export default function App() {
             onDownload={handleDownload}
             onRate={handleRate}
             onToggleFeature={handleToggleFeature}
+            onEdit={(modToEdit) => setEditingMod(modToEdit)}
           />
         )}
 
@@ -471,18 +469,36 @@ export default function App() {
         onRate={handleRate}
         currentUser={currentUser}
         onOpenFullPage={handleOpenFullPage}
+        onTagClick={(tag) => {
+          setQuery(tag)
+          setCurrentView('home')
+          setTimeout(() => scrollToBrowse(), 50)
+        }}
+        onEdit={(modToEdit) => setEditingMod(modToEdit)}
       />
+
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         onAuthSuccess={handleAuthSuccess}
       />
+
       <UploadModal
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
         onAddMod={handleAddMod}
         currentUser={currentUser}
       />
+
+      {editingMod && (
+        <UploadModal
+          isOpen={Boolean(editingMod)}
+          onClose={() => setEditingMod(null)}
+          onAddMod={handleUpdateMod}
+          currentUser={currentUser}
+          initialData={editingMod}
+        />
+      )}
     </div>
   )
 }

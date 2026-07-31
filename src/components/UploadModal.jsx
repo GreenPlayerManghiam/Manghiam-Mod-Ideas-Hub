@@ -6,17 +6,19 @@ import {
   uploadModImage,
   getModImageUrl,
   getCurrentUser,
-  supabase, // Import supabase client to query categories
+  supabase,
 } from '../lib/supabaseApi'
 
 const MAX_IMAGES = 5
 
-export default function UploadModal({ isOpen, onClose, onAddMod }) {
+export default function UploadModal({ isOpen, onClose, onAddMod, initialData = null }) {
   const [gamesList, setGamesList] = useState([])
-  const [categoriesList, setCategoriesList] = useState([]) // State for categories
+  const [categoriesList, setCategoriesList] = useState([])
   const [images, setImages] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const formRef = useRef(null)
+
+  const isEditing = Boolean(initialData)
 
   useEffect(() => {
     if (!isOpen) return
@@ -41,10 +43,21 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
       } else {
         setCategoriesList(catData || [])
       }
+
+      // 3. If editing, pre-load existing gallery images as previews
+      if (initialData && initialData.gallery_images) {
+        const preloaded = initialData.gallery_images.map((url, idx) => ({
+          file: null, // No new file object needed for existing remote images
+          preview: url,
+          name: `existing_image_${idx}.jpg`,
+          isExisting: true,
+        }))
+        setImages(preloaded)
+      }
     }
 
     loadData()
-  }, [isOpen])
+  }, [isOpen, initialData])
 
   if (!isOpen) return null
 
@@ -64,6 +77,7 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
       file: file,
       preview: URL.createObjectURL(file),
       name: file.name,
+      isExisting: false,
     }))
 
     setImages((prev) => [...prev, ...newImages])
@@ -72,7 +86,10 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
 
   const handleRemoveImage = (index) => {
     setImages((prev) => {
-      URL.revokeObjectURL(prev[index].preview)
+      const target = prev[index]
+      if (target && !target.isExisting && target.preview) {
+        URL.revokeObjectURL(target.preview)
+      }
       return prev.filter((_, i) => i !== index)
     })
   }
@@ -97,7 +114,6 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
     setGamesList((prev) => [...prev, newGame].sort((a, b) => a.name.localeCompare(b.name)))
   }
 
-  // Optional: Allow admins/mods to add custom categories inline
   const handleAddCustomCategory = async () => {
     const catName = prompt("Enter new category name (e.g., 'Soundtrack'):")
     if (!catName) return
@@ -123,7 +139,9 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
   }
 
   const handleClose = () => {
-    images.forEach((img) => URL.revokeObjectURL(img.preview))
+    images.forEach((img) => {
+      if (!img.isExisting && img.preview) URL.revokeObjectURL(img.preview)
+    })
     setImages([])
     if (formRef.current) formRef.current.reset()
     onClose()
@@ -138,29 +156,33 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
     try {
       const user = await getCurrentUser()
       if (!user) {
-        alert('You must be signed in to upload a mod.')
+        alert('You must be signed in to publish or edit a mod.')
         setIsSubmitting(false)
         return
       }
 
       const formData = new FormData(e.target)
       const gameId = formData.get('game')
-      const selectedCategory = formData.get('category') // Get selected category from form
+      const selectedCategory = formData.get('category')
 
+      // Separate newly uploaded files from already existing images
       const uploadedUrls = []
       for (const img of images) {
-        const timestamp = Date.now()
-        const safeName = img.name.replace(/[^a-zA-Z0-9.-]/g, '_')
-        const path = `${user.id}/${timestamp}_${safeName}`
+        if (img.isExisting) {
+          uploadedUrls.push(img.preview) // Keep existing remote URL
+        } else if (img.file) {
+          const timestamp = Date.now()
+          const safeName = img.name.replace(/[^a-zA-Z0-9.-]/g, '_')
+          const path = `${user.id}/${timestamp}_${safeName}`
 
-        const { error: uploadError } = await uploadModImage(path, img.file)
+          const { error: uploadError } = await uploadModImage(path, img.file)
+          if (uploadError) {
+            throw new Error(`Failed to upload image "${img.name}": ${uploadError.message}`)
+          }
 
-        if (uploadError) {
-          throw new Error(`Failed to upload image "${img.name}": ${uploadError.message}`)
+          const publicUrl = getModImageUrl(path)
+          uploadedUrls.push(publicUrl)
         }
-
-        const publicUrl = getModImageUrl(path)
-        uploadedUrls.push(publicUrl)
       }
 
       const coverImage =
@@ -169,28 +191,55 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
 
       const galleryImages = uploadedUrls.length > 0 ? uploadedUrls : [coverImage]
 
-      const newMod = {
-        title: formData.get('title'),
-        description: formData.get('description'),
-        author_id: user.id,
-        game_id: gameId,
-        category: selectedCategory, // Save the dynamic category name to database
-        cover_image: coverImage,
-        gallery_images: galleryImages,
-        version: '1.0',
-        file_size: '15 MB',
-        tags: ['New', 'Custom'],
-      }
+      if (isEditing) {
+        // --- EDIT MODE ---
+        const updatedFields = {
+          title: formData.get('title'),
+          description: formData.get('description'),
+          game_id: gameId,
+          category: selectedCategory,
+          cover_image: coverImage,
+          gallery_images: galleryImages,
+        }
 
-      const { data: createdMod, error: createError } = await createMod(newMod)
-      if (createError) {
-        throw new Error(createError.message)
-      }
+        const { data: updatedMod, error: updateError } = await supabase
+          .from('mods')
+          .update(updatedFields)
+          .eq('id', initialData.id)
+          .select()
+          .single()
 
-      onAddMod(createdMod)
-      handleClose()
+        if (updateError) {
+          throw new Error(updateError.message)
+        }
+
+        onAddMod(updatedMod) // Passes updated mod back to parent state handler
+        handleClose()
+      } else {
+        // --- CREATE MODE ---
+        const newMod = {
+          title: formData.get('title'),
+          description: formData.get('description'),
+          author_id: user.id,
+          game_id: gameId,
+          category: selectedCategory,
+          cover_image: coverImage,
+          gallery_images: galleryImages,
+          version: '1.0',
+          file_size: '15 MB',
+          tags: ['New', 'Custom'],
+        }
+
+        const { data: createdMod, error: createError } = await createMod(newMod)
+        if (createError) {
+          throw new Error(createError.message)
+        }
+
+        onAddMod(createdMod)
+        handleClose()
+      }
     } catch (err) {
-      alert('Failed to publish mod: ' + err.message)
+      alert('Failed to save mod: ' + err.message)
     } finally {
       setIsSubmitting(false)
     }
@@ -206,7 +255,9 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-6">
-          <h3 className="font-display text-xl font-bold text-white">Upload a New Mod</h3>
+          <h3 className="font-display text-xl font-bold text-white">
+            {isEditing ? 'Edit Mod Details' : 'Upload a New Mod'}
+          </h3>
           <button
             onClick={handleClose}
             className="text-gray-400 hover:text-white text-xl cursor-pointer"
@@ -222,6 +273,7 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
             <input
               name="title"
               required
+              defaultValue={initialData?.title || ''}
               placeholder="e.g. Ultra Graphics Overhaul"
               className="w-full rounded-xl border border-white/10 bg-surface-overlay py-2.5 px-3 text-sm text-white placeholder-gray-500 outline-none focus:border-accent"
             />
@@ -242,7 +294,7 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
             <select
               name="game"
               required
-              defaultValue=""
+              defaultValue={initialData?.game_id || ''}
               className="w-full rounded-xl border border-white/10 bg-surface-overlay py-2.5 px-3 text-sm text-white outline-none focus:border-accent"
             >
               <option value="" disabled>Select a game</option>
@@ -254,7 +306,7 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
             </select>
           </div>
 
-          {/* Category Selection (NEW) */}
+          {/* Category Selection */}
           <div>
             <div className="flex justify-between items-center mb-1">
               <label className="block text-sm text-gray-400">Category</label>
@@ -269,7 +321,7 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
             <select
               name="category"
               required
-              defaultValue=""
+              defaultValue={initialData?.category || ''}
               className="w-full rounded-xl border border-white/10 bg-surface-overlay py-2.5 px-3 text-sm text-white outline-none focus:border-accent"
             >
               <option value="" disabled>Select a category</option>
@@ -288,6 +340,7 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
               name="description"
               required
               rows="3"
+              defaultValue={initialData?.description || ''}
               placeholder="Describe your mod..."
               className="w-full rounded-xl border border-white/10 bg-surface-overlay py-2.5 px-3 text-sm text-white placeholder-gray-500 outline-none focus:border-accent"
             />
@@ -361,7 +414,7 @@ export default function UploadModal({ isOpen, onClose, onAddMod }) {
             disabled={isSubmitting}
             className="w-full btn-primary py-3 mt-2 cursor-pointer disabled:opacity-50"
           >
-            {isSubmitting ? 'Publishing…' : 'Publish Mod'}
+            {isSubmitting ? 'Saving…' : isEditing ? 'Save Changes' : 'Publish Mod'}
           </button>
         </form>
       </div>

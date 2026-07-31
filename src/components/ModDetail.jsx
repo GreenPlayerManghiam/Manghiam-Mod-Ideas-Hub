@@ -10,13 +10,15 @@ export default function ModDetail({
   onDownload,
   onRate,
   onOpenFullPage,
+  onTagClick,
+  onEdit,
   currentUser,
 }) {
   const [isSaved, setIsSaved] = useState(false)
   const [userRating, setUserRating] = useState(null)
   const [galleryIndex, setGalleryIndex] = useState(0)
 
-  // Safely extract a string identifier for ratings
+  // Safely extract a string identifier for ratings/authorship
   const activeUserIdentifier =
     (typeof currentUser === 'string' ? currentUser : null) ||
     currentUser?.username ||
@@ -66,9 +68,17 @@ export default function ModDetail({
     } else {
       setUserRating(null)
     }
-  }, [mod, currentUser?.id]) // ✅ Fixed: Strictly stable dependency array size of 2
+  }, [mod, currentUser?.id])
 
   if (!mod) return null
+
+  // Check if current user is the owner of this mod
+  const isOwner =
+    currentUser &&
+    (currentUser.id === mod.user_id ||
+     currentUser.id === mod.author_id ||
+     activeUserIdentifier === mod.author ||
+     activeUserIdentifier === mod.author?.username)
 
   // Build image list
   const rawImages =
@@ -305,13 +315,23 @@ export default function ModDetail({
             ))}
           </div>
 
-          {/* Tags */}
+          {/* Clickable Tags */}
           {Array.isArray(mod.tags) && mod.tags.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
               {mod.tags.map((tag) => (
-                <span key={tag} className="px-2.5 py-1 text-xs font-medium rounded-md bg-surface-overlay border border-white/10 text-gray-300">
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => {
+                    if (onTagClick) {
+                      onTagClick(tag)
+                      onClose()
+                    }
+                  }}
+                  className="px-2.5 py-1 text-xs font-medium rounded-md bg-surface-overlay border border-white/10 text-gray-300 hover:text-accent hover:border-accent transition-colors cursor-pointer"
+                >
                   #{tag}
-                </span>
+                </button>
               ))}
             </div>
           )}
@@ -338,6 +358,20 @@ export default function ModDetail({
                 {isSaved ? '❤️ Added to Collection' : '🤍 Add to Collection'}
               </button>
             </div>
+
+            {/* Show Edit button only if the logged-in user is the owner */}
+            {isOwner && onEdit && (
+              <button
+                type="button"
+                onClick={() => {
+                  onEdit(mod)
+                  onClose()
+                }}
+                className="w-full py-3 rounded-xl bg-surface-overlay border border-accent/40 text-xs font-semibold text-accent hover:bg-accent/10 transition-colors cursor-pointer flex items-center justify-center gap-2"
+              >
+                ✏️ Edit Mod Details & Version
+              </button>
+            )}
 
             {onOpenFullPage && (
               <button
